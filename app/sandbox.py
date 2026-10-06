@@ -31,7 +31,9 @@ OUTPUT_CAP = 64_000
 VIOLATION = "SANDBOX_VIOLATION"
 
 GUARD = r'''
-import io, os, sys
+import io, json, os, sys
+if len(sys.argv) > 2:  # library paths of the parent interpreter (-I would otherwise hide user site-packages)
+    sys.path[:] = json.loads(sys.argv.pop(2))
 import collections, datetime, decimal, fractions, functools, itertools, json, math, operator, re, statistics
 import numpy, pandas
 try:
@@ -163,7 +165,8 @@ class Sandbox:
             kwargs["preexec_fn"] = self._posix_limits
         t0 = time.monotonic()
         try:
-            proc = subprocess.Popen([sys.executable, "-I", "_guard.py", "proof.py"], cwd=work, env=env,
+            proc = subprocess.Popen([sys.executable, "-I", "_guard.py", "proof.py", json.dumps(_library_paths())],
+                                    cwd=work, env=env,
                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                                     encoding="utf-8", errors="replace", **kwargs)
         except OSError as e:
@@ -209,6 +212,18 @@ class Sandbox:
             return self._finish(None, "", "", time.monotonic() - t0, True)
         except FileNotFoundError:
             return ExecutionResult("sandbox_error", error="docker is not installed")
+
+
+def _library_paths() -> list[str]:
+    """The parent's import path minus the project and working directory, so the sandbox sees the same
+    installed packages (including user site-packages) but none of this application's code."""
+    project = os.path.realpath(Path(__file__).resolve().parent.parent)
+    out = []
+    for p in sys.path:
+        rp = os.path.realpath(p) if p else ""
+        if rp and os.path.isdir(rp) and rp not in (project, os.path.realpath(os.getcwd())):
+            out.append(rp)
+    return out
 
 
 class _Job:

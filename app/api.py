@@ -382,9 +382,14 @@ class Handler(SimpleHTTPRequestHandler):
         return self._error(HTTPStatus.NOT_FOUND, "Unknown endpoint.")
 
 
-def serve(host: str = "127.0.0.1", port: int = 8600, cfg: Config | None = None):
+def create_server(host: str = "127.0.0.1", port: int = 8600, cfg: Config | None = None) -> ThreadingHTTPServer:
+    """Port 0 picks a free port; read it back from `server.server_port`."""
     setup_logging()
     Handler.app = App(cfg or Config.from_env())
-    httpd = ThreadingHTTPServer((host, port), Handler)
-    print(f"Proof-Carrying Data Analyst on http://{host}:{port}")
+    return ThreadingHTTPServer((host, port), Handler)
+
+
+def serve(host: str = "127.0.0.1", port: int = 8600, cfg: Config | None = None):
+    httpd = create_server(host, port, cfg)
+    print(f"Proof-Carrying Data Analyst on http://{host}:{httpd.server_port}")
     httpd.serve_forever()

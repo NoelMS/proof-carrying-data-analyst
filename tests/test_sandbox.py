@@ -95,6 +95,15 @@ def test_execution_failures_classified(code, status):
     assert run(code).status == status
 
 
+def test_sandbox_sees_parent_packages_but_not_project_code():
+    from app.sandbox import _library_paths
+    import numpy
+    paths = _library_paths()
+    assert any(os.path.realpath(numpy.__file__).startswith(p) for p in paths)  # also covers user site-packages
+    assert str(SYNTHETIC.parent.parent) not in paths
+    assert run("import app\nprint('RESULT: 1')", trusted=True).status == "runtime_error"
+
+
 def test_parse_result():
     assert parse_result('noise\nRESULT: {"a": "1.00"}\n') == ({"a": "1.00"}, None)
     assert parse_result("")[1]

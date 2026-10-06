@@ -60,6 +60,16 @@ python scripts/make_synthetic.py                             # regenerate demons
 
 ## Running
 
+**One click (Windows).** Create the shortcuts once:
+
+```bash
+.venv\Scripts\python scripts\create_shortcut.py
+```
+
+This puts **Proof-Carrying Data Analyst** on the Desktop and in the Start menu. The shortcut starts the server with no console window and opens the app in its own window, with no tabs or address bar, on a free local port. Closing that window stops the server. Start-up errors appear in a dialog and in `logs/launcher.log`. On other systems, run `python launch.pyw`.
+
+**From a terminal:**
+
 ```bash
 python server.py                                                 # web interface on http://127.0.0.1:8600
 python scripts/cli.py ask "What is the revenue in USD by region?"
