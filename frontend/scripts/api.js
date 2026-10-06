@@ -44,6 +44,7 @@ export const api = {
   verifyCode: (id, code) => request(`/api/analysis/${enc(id)}/verify`, { method: "POST", body: code == null ? {} : { code } }),
   runCode: (code, tables) => request("/api/run", { method: "POST", body: { code, tables } }),
   benchmarkProgress: () => request("/api/benchmark/progress"),
+  cancelBenchmark: () => request("/api/benchmark/cancel", { method: "POST", body: {} }),
   fixes: () => request("/api/fixes"),
   previewFix: (fix_id, choice, value) => request("/api/fixes/preview", { method: "POST", body: { fix_id, choice, value } }),
   applyFix: (fix_id, choice, value, token) => request("/api/fixes/apply", { method: "POST", body: { fix_id, choice, value, token } }),

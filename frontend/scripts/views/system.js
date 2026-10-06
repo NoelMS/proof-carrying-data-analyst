@@ -89,6 +89,14 @@ async function renderBench(host, s) {
     "Runs every labelled demonstration question through the full workflow, on the original demonstration data ",
     "(applied fixes are not used, because the expected answers refer to the original records).")];
   if (prog?.error) body.push(h("p", { class: "notice-inline", style: { "margin-bottom": "var(--space-4)" } }, `The last run stopped: ${prog.error}`));
+  if (prog?.cancelled) {
+    body.push(h("div", { style: { "margin-bottom": "var(--space-6)" } },
+      h("p", { class: "notice-inline" }, `The last run was cancelled after ${prog.rows.length} of ${prog.total} questions. `
+        + "Cancelled runs are not saved; the metrics below are from the last complete run."),
+      h("details", { class: "disclosure", style: { "margin-top": "var(--space-3)" } },
+        h("summary", {}, `Results of the cancelled run (${prog.rows.length})`, arrow()),
+        benchRows(prog.rows, prog.rows.length, null))));
+  }
   if (report) {
     body.push(h("p", { class: "meta", style: { "margin-bottom": "var(--space-3)" } },
       `Last run ${new Date(report.run_at).toLocaleString()} · ${report.cases} questions · ${report.duration_s} s`));
@@ -115,13 +123,24 @@ function watchBench(host, s) {
     }
     if (!p.running) {
       update({ activity: null });
-      toast(p.error ? "Benchmark stopped" : "Benchmark complete", p.error ? "error" : "info");
+      toast(p.error ? "Benchmark stopped" : p.cancelled ? "Benchmark cancelled" : "Benchmark complete", p.error || p.cancelled ? "error" : "info");
       return renderBench(host, s);
     }
     host.replaceChildren(benchProgress(p));
     benchTimer = setTimeout(tick, 450);
   };
   tick();
+}
+
+function cancelButton(p) {
+  const btn = h("button", { class: "btn btn--secondary", type: "button", disabled: p.cancel || null },
+    p.cancel ? "Cancelling after the current question…" : "Cancel benchmark");
+  btn.addEventListener("click", async () => {
+    btn.disabled = true;
+    btn.replaceChildren("Cancelling after the current question…");
+    try { await api.cancelBenchmark(); } catch (e) { toast(e.message, "error"); }
+  });
+  return btn;
 }
 
 function benchProgress(p) {
@@ -132,8 +151,10 @@ function benchProgress(p) {
   const remaining = avg != null ? Math.max(0, (p.total - rows.length) * avg) : null;
   const c = p.current;
   return h("div", { "aria-live": "polite" },
-    h("p", { class: "eyebrow" }, `Running · ${rows.length} of ${p.total} complete · ${elapsed} s elapsed`
-      + (remaining != null ? ` · about ${Math.ceil(remaining)} s left at the current pace` : "")),
+    h("div", { class: "btn-row", style: { "justify-content": "space-between", "margin-bottom": "var(--space-2)" } },
+      h("p", { class: "eyebrow" }, `${p.cancel ? "Cancelling" : "Running"} · ${rows.length} of ${p.total} complete · ${elapsed} s elapsed`
+        + (remaining != null && !p.cancel ? ` · about ${Math.ceil(remaining)} s left at the current pace` : "")),
+      cancelButton(p)),
     h("div", { class: "progress", role: "progressbar", "aria-valuemin": "0", "aria-valuemax": String(p.total), "aria-valuenow": String(rows.length),
       "aria-label": "Questions completed" }, h("div", { class: "progress__bar", style: { "--p": (rows.length / p.total).toFixed(4) } })),
     c && h("div", { class: "bench-now" },
@@ -156,13 +177,8 @@ const tally = (v, l) => h("div", {}, h("p", { class: "tally__v" }, v), h("p", { 
 
 function benchRows(rows, total, currentIndex, cases) {
   // rows[i] is the result for case i; cases[i] (while running) gives the expectation before it runs
-  const items = Array.from({ length: total }, (_, i) => ({ i, r: rows[i], c: rows[i] || cases?.[i] || {} }));
-  const group = (title, note, list) => list.length > 0 && h("section", { style: { "margin-top": "var(--space-5)" } },
-    h("div", { class: "section__head" }, h("h3", { class: "eyebrow" }, `${title} (${list.length})`), h("span", { class: "meta" }, note)),
-    h("div", { role: "list" }, list.map(({ i, r, c }) => benchRow(i, r, c, currentIndex))));
-  return h("div", {},
-    group("Must be answered", "Correct = verified and equal to the independently computed answer", items.filter((x) => x.c.answerable)),
-    group("Must be refused", "Correct = refused for the expected reason", items.filter((x) => x.c.answerable === false)));
+  return h("div", { role: "list", style: { "margin-top": "var(--space-4)", "border-top": "1px solid var(--color-text)" } },
+    Array.from({ length: total }, (_, i) => benchRow(i, rows[i], rows[i] || cases?.[i] || {}, currentIndex)));
 }
 
 const short = (v) => {

@@ -1,4 +1,4 @@
-# Proof-Carrying Data Analyst
+﻿# Proof-Carrying Data Analyst
 
 Answers analytical questions over messy, multi-table data, and attaches executable proof to every number it reports.
 
@@ -85,13 +85,13 @@ Run these with the Python that has the requirements installed. If you use the pr
 
 | View | What it shows |
 |---|---|
-| Analysis | Question input (Ctrl/⌘ + Enter to submit, `/` to focus), the available data, and example questions |
+| Analysis | Question input (Ctrl/âŒ˜ + Enter to submit, `/` to focus), the available data, and example questions |
 | Analysis / result | Split view. The left side holds the stable record: question, stage timeline, data used, data checks, plan and verification checks. The right side moves from analyzing to executing, verifying, and then the verified result or a refusal. Below sit the evidence, execution output and the executable proof (copy, download, re-run). |
 | Data | Switch between the demonstration data and your uploads. Uploaded files are kept in `.pcda/uploads/` across sessions, and new uploads are added to them; a file with the same name replaces the earlier one. Files can be removed individually. Also shows table inventory, relationships and metric definitions. Each table has an inspector with overview, schema, quality, sample rows and relationships. |
 | Quality | Every detected issue: why it matters and how the analysis handles it. Fixable issues have a **Fix this issue** flow. You choose the fix (for example day-first or month-first dates, which duplicate to keep, a target unit), preview every removed row and changed cell, and confirm. Only then is it applied. Applied fixes are stored as overrides in `.pcda/fixes/`, and source files are never modified. **Change history** lists each change with **Roll back** (newest change per table first) and **Restore original** per table. |
 | History | Past analyses grouped by day, each reopening its result and proof. **Re-run** and **Run again as new analysis** work for analyses from earlier sessions; the plan is rebuilt from the saved interpretation. |
 | Workbench | An editor that runs code in the analyst's own sandbox, where pandas, numpy and the standard library are already installed, so nothing needs setting up on your computer. Opened from an analysis, **Run and verify** applies every verification check to the edited code. **Download runnable bundle** gives a zip with `proof.py`, the CSVs it reads, `requirements.txt` and a double-click launcher that uses the analyst's Python. |
-| System | Live configuration, sandbox health check, security controls, verification checks, and the benchmark. The benchmark runs in the background and shows real progress: questions done and remaining, the current question with its live workflow stage, each outcome against the expected answer, and running tallies. It always runs on the original demonstration data. |
+| System | Live configuration, sandbox health check, security controls, verification checks, and the benchmark. The benchmark runs in the background and shows real progress: questions done and remaining, the current question with its live workflow stage, each outcome against the expected answer, and running tallies. Answerable and must-refuse questions are mixed in one list. **Cancel benchmark** stops after the current question; a cancelled run shows its partial results but never replaces the saved metrics of the last complete run. It always runs on the original demonstration data. |
 
 Progress comes from the backend. Each workflow stage pushes a state snapshot over Server-Sent Events, and the interface renders only those snapshots. There are no simulated percentages, and a "Verified" label appears only when the backend's verification passed. Motion is limited to CSS transitions and the View Transitions API. All of it is disabled under `prefers-reduced-motion`, and the interface is fully usable by keyboard.
 
@@ -133,7 +133,7 @@ Values are read from the environment, then from `.env`. Real environment variabl
 Questions don't need exact phrasing. For example, "region with high revenue usd" reads as total revenue in USD by region, highest one. The parser understands:
 - **Currencies:** ISO codes (`usd`) and unambiguous names (`euros`, `yen`, `dong`), anywhere in the question.
 - **Highest and lowest:** "highest / most / top / best" and "lowest / least / bottom / worst".
-- **Entities without "by":** "which region …", "which carrier shipped the most".
+- **Entities without "by":** "which region â€¦", "which carrier shipped the most".
 - **Metric aliases:** declared in `metrics.json` (`"aliases": ["sales", "turnover"]`).
 - **Numeric columns:** named anywhere in the question, for data without metric definitions.
 - **Counts of an entity:** when no measure is named ("orders in 2024", "how many shops").
@@ -221,7 +221,7 @@ Exact duplicate rows (identical in every field, including the record ID) are cou
 python -m pytest -q
 ```
 
-The suite (131 tests) covers:
+The suite (133 tests) covers:
 - ingestion: malformed, empty or corrupted files, encodings, hostile column names
 - profiling and trap detection
 - sandbox isolation: environment secrets, subprocess, file reads and writes, network, ctypes, timeout, memory

@@ -121,3 +121,24 @@ def test_benchmark_progress(app):
     assert app.bench["report"]["metrics"]["confident_wrong_rate"] == 0.0
     assert all("duration_s" in r and "attempts" in r for r in app.bench["rows"])
     json.dumps({k: v for k, v in app.bench.items() if k != "report"})  # serialisable for the API
+
+
+def test_benchmark_cancel_keeps_last_complete_results(app):
+    import time
+    app.start_benchmark()
+    while not app.bench["rows"]:
+        time.sleep(0.05)
+    app.cancel_benchmark()
+    while app.bench["running"]:
+        time.sleep(0.05)
+    assert app.bench["cancelled"] and 0 < app.bench["done"] < app.bench["total"]
+    assert app.bench["report"]["cancelled"] and app.bench["report"]["cases"] == app.bench["done"]
+    assert not app.results_file.exists()  # a cancelled run never replaces saved metrics
+    with pytest.raises(LookupError):
+        app.cancel_benchmark()  # nothing running
+
+
+def test_cases_are_mixed():
+    flags = [c["answerable"] for c in CASES]
+    longest = max(len(list(g)) for _, g in __import__("itertools").groupby(flags))
+    assert longest <= 2 and any(flags) and not all(flags)

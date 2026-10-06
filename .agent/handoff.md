@@ -1,4 +1,4 @@
-# Handoff
+﻿# Handoff
 
 ## Current implementation status
 Working end to end: ingestion -> profiling -> trap detection -> interpretation -> answerability -> plan ->
@@ -29,7 +29,7 @@ None in progress.
 - The deterministic parser's grammar is limited (see README > Configuration).
 
 ## Tests executed
-`python -m pytest -q`: all 131 pass on Windows 11 with Python 3.13, in both the project venv (pandas 3.0) and the user's global Python 3.13 (pandas 2.3). Docker tests ran with Docker Desktop and `pcda-sandbox:latest`.
+`python -m pytest -q`: all 133 pass on Windows 11 with Python 3.13, in both the project venv (pandas 3.0) and the user's global Python 3.13 (pandas 2.3). Docker tests ran with Docker Desktop and `pcda-sandbox:latest`.
 `python scripts/cli.py benchmark`: 28 questions (11 answer, 17 refusal with expected reason), all metrics 1.0, confident-wrong rate 0.0.
 
 ## Tests failing

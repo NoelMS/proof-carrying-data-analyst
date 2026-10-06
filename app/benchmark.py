@@ -13,19 +13,24 @@ from .catalog import Catalog
 from .verification import normalize
 from .workflow import Analyst
 
-RESULTS_FILE = Path("benchmark_results.json")
+RESULTS_FILE = Path("benchmark_results.json")  # default; the app keeps it in its state directory
 
 
 def _rate(n: int, d: int) -> float | None:
     return round(n / d, 4) if d else None
 
 
-def run_benchmark(analyst: Analyst, cases: list[dict], progress=None) -> dict:
-    """`progress(event)` receives {"type": "case_start" | "stage" | "case_done", ...} as work happens."""
+def run_benchmark(analyst: Analyst, cases: list[dict], progress=None, should_stop=None) -> dict:
+    """`progress(event)` receives {"type": "case_start" | "stage" | "case_done", ...} as work happens.
+    `should_stop()` is checked before each question; the report then covers the questions completed."""
     rows, attempts, exec_ok, verified_attempts, reproduced = [], 0, 0, 0, 0
     t0 = time.monotonic()
     emit = progress or (lambda e: None)
+    cancelled = False
     for i, case in enumerate(cases):
+        if should_stop and should_stop():
+            cancelled = True
+            break
         emit({"type": "case_start", "index": i, "question": case["question"], "answerable": case["answerable"]})
         tc = time.monotonic()
         st = analyst.run(case["question"], on_event=lambda s, i=i: emit(
@@ -65,6 +70,8 @@ def run_benchmark(analyst: Analyst, cases: list[dict], progress=None) -> dict:
         "run_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "duration_s": round(time.monotonic() - t0, 1),
         "cases": len(rows),
+        "total_cases": len(cases),
+        "cancelled": cancelled,
         "metrics": {
             "valid_answer_accuracy": _rate(sum(r["correct"] for r in ans), len(ans)),
             "refusal_accuracy": _rate(sum(r["correct"] for r in unans), len(unans)),
@@ -78,8 +85,12 @@ def run_benchmark(analyst: Analyst, cases: list[dict], progress=None) -> dict:
 
 
 def run_and_save(catalog: Catalog, cases_file: Path, out: Path = RESULTS_FILE, analyst: Analyst | None = None,
-                 progress=None) -> dict:
+                 progress=None, should_stop=None) -> dict:
+    """Run and save the report. A cancelled run is returned but not saved, so the saved metrics always
+    describe a complete run."""
     cases = json.loads(Path(cases_file).read_text(encoding="utf-8"))
-    report = run_benchmark(analyst or Analyst(catalog), cases, progress)
+    report = run_benchmark(analyst or Analyst(catalog), cases, progress, should_stop)
+    if report["cancelled"]:
+        return report
     out.write_text(json.dumps(report, indent=2), encoding="utf-8")
     return report

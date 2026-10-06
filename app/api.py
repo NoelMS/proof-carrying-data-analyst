@@ -42,7 +42,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
-from .benchmark import RESULTS_FILE, run_and_save
+from .benchmark import run_and_save
 from .catalog import Catalog, build_catalog
 from .answerability import assess
 from .config import Config
@@ -345,13 +345,22 @@ class App:
         return buf.getvalue()
 
     # ---------------------------------------------------------------- benchmark (background job with progress)
+    @property
+    def results_file(self) -> Path:
+        return self.uploads_dir.parent / "benchmark_results.json"
+
+    def cancel_benchmark(self):
+        if not self.bench.get("running"):
+            raise LookupError("No benchmark is running.")
+        self.bench["cancel"] = True  # takes effect before the next question
+
     def start_benchmark(self):
         with self.lock:
             if self.bench.get("running"):
                 raise LookupError("A benchmark is already running.")
             cases = json.loads((DEMO / "ground_truth.json").read_text(encoding="utf-8"))
             self.bench = {"running": True, "total": len(cases), "done": 0, "current": None, "rows": [],
-                          "started_at": time.time(), "error": None, "report": None,
+                          "started_at": time.time(), "error": None, "report": None, "cancel": False, "cancelled": False,
                           "questions": [c["question"] for c in cases],
                           "cases": [{"question": c["question"], "answerable": c["answerable"], "expected": c["expected"],
                                      "expected_refusal": c.get("expected_refusal")} for c in cases]}
@@ -372,8 +381,10 @@ class App:
 
         def work():
             try:
-                self.bench["report"] = run_and_save(cat, DEMO / "ground_truth.json", analyst=Analyst(cat, self.cfg),
-                                                    progress=progress)
+                self.bench["report"] = run_and_save(cat, DEMO / "ground_truth.json", out=self.results_file,
+                                                    analyst=Analyst(cat, self.cfg), progress=progress,
+                                                    should_stop=lambda: self.bench.get("cancel"))
+                self.bench["cancelled"] = self.bench["report"]["cancelled"]
             except Exception as e:  # surfaced in the progress view, never silent
                 self.bench["error"] = f"{type(e).__name__}: {e}"
             finally:
@@ -453,7 +464,8 @@ class Handler(SimpleHTTPRequestHandler):
             if parts == ["history"]:
                 return self._json(app.history())
             if parts == ["benchmark"]:
-                return self._json(json.loads(RESULTS_FILE.read_text(encoding="utf-8")) if RESULTS_FILE.exists() else None)
+                f = app.results_file
+                return self._json(json.loads(f.read_text(encoding="utf-8")) if f.exists() else None)
             if parts == ["benchmark", "progress"]:
                 return self._json({k: v for k, v in app.bench.items() if k != "report"})
             if parts == ["fixes"]:
@@ -623,6 +635,12 @@ class Handler(SimpleHTTPRequestHandler):
             except (KeyError, TypeError, binascii.Error):
                 return self._error(HTTPStatus.BAD_REQUEST, "Each file needs a name and base64 data.")
             return self._json(self._datasets())
+        if parts == ["benchmark", "cancel"]:
+            try:
+                app.cancel_benchmark()
+            except LookupError as e:
+                return self._error(HTTPStatus.CONFLICT, str(e))
+            return self._json({"cancelling": True}, HTTPStatus.ACCEPTED)
         if parts == ["benchmark"]:
             try:
                 app.start_benchmark()
