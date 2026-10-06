@@ -7,3 +7,6 @@ workspaces/
 logs/
 benchmark_results.json
 .pcda/
+training/*.jsonl
+training/schemas.json
+*.gguf

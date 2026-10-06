@@ -351,3 +351,26 @@ def catalog_summary(tables: dict, profiles: dict[str, TableProfile], rels, metri
         "relationships": [f"{r.child}.{r.column} -> {r.parent}.{r.column}" for r in rels],
         "metric_definitions": metrics,
     }
+
+
+def compact_catalog(summary: dict) -> str:
+    """Short text form of `catalog_summary` for small local models: names, types, keys, links and metric
+    definitions only, with no data values. Training data uses the same function, so prompts match exactly."""
+    lines = ["Tables:"]
+    for t, info in summary["tables"].items():
+        cols = ", ".join(f"{c} {d['type']}" for c, d in info["columns"].items())
+        lines.append(f"- {t}" + (f" (key {info['key']})" if info.get("key") else "") + f": {cols}")
+    if summary.get("relationships"):
+        lines.append("Relationships:")
+        lines += [f"- {r}" for r in summary["relationships"]]
+    if summary.get("metric_definitions"):
+        lines.append("Metrics:")
+        for name, d in summary["metric_definitions"].items():
+            if d.get("ratio_filter"):
+                rf = d["ratio_filter"]
+                body = f"share of {d['table']} rows where {rf['column']} {rf['op']} {rf['value']}"
+            else:
+                body = f"{d.get('aggregation', 'sum')} of {d['table']}.{d['column']}"
+            aliases = d.get("aliases") or []
+            lines.append(f"- {name}: {body}" + (f"; also called {', '.join(aliases)}" if aliases else ""))
+    return "\n".join(lines)

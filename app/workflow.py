@@ -22,6 +22,7 @@ from .catalog import Catalog
 from .codegen import pandas_proof
 from .config import Config
 from .llm import ClaudeClient, LLMError
+from .local_model import LocalInterpreter, differences
 from .planning import Plan, build_plan
 from .question import QuerySpec, catalog_summary, parse_question
 from .sandbox import ExecutionResult, Sandbox
@@ -97,7 +98,12 @@ class Analyst:
         self.cat = catalog
         self.cfg = cfg or Config.from_env()
         self.sandbox = Sandbox(self.cfg)
-        self.llm = ClaudeClient(self.cfg.llm_model) if self.cfg.llm_provider == "anthropic" else None
+        if self.cfg.llm_provider == "anthropic":
+            self.llm = ClaudeClient(self.cfg.llm_model)
+        elif self.cfg.llm_provider == "local":
+            self.llm = LocalInterpreter(self.cfg.local_model, self.cfg.ollama_url)
+        else:
+            self.llm = None
         self.code_writer = code_writer or self._default_writer
 
     # ------------------------------------------------------------------ driver
@@ -127,6 +133,8 @@ class Analyst:
         if not st.question:
             st.final = self._refusal(st, "No question was asked.", [])
             return "done"
+        if isinstance(self.llm, LocalInterpreter):
+            return self._interpret_local(st)
         if self.llm:
             try:
                 st.spec = self.llm.interpret(st.question, catalog_summary(
@@ -138,6 +146,44 @@ class Analyst:
         st.spec = parse_question(st.question, self.cat.tables, self.cat.profiles, self.cat.metrics)
         st.interpreter = st.interpreter or "deterministic parser"
         return "assess"
+
+    def _interpret_local(self, st: AnalysisState) -> str:
+        """Parser first; the local model reads what the parser cannot. A small model can misread a question
+        the parser reads correctly, so the parser's complete reading always wins and a model that disagrees
+        is only reported. Whatever is chosen still goes through every answerability check."""
+        parsed = parse_question(st.question, self.cat.tables, self.cat.profiles, self.cat.metrics)
+        name = f"local model ({self.cfg.local_model})"
+        try:
+            model_spec = self.llm.interpret(st.question, catalog_summary(
+                self.cat.tables, self.cat.profiles, self.cat.relationships, self.cat.metrics))
+        except LLMError as e:
+            st.spec, st.interpreter = parsed, f"deterministic parser ({name} unavailable: {e})"
+            return "assess"
+        if not parsed.unresolved:
+            st.spec, st.interpreter = parsed, "deterministic parser"
+            diff = differences(parsed, model_spec)
+            parsed.notes.append(f"{name} agrees with this reading" if not diff
+                                else f"{name} read it differently ({', '.join(diff)}); the parser's reading is used")
+        elif not model_spec.unresolved and self._refs_exist(model_spec):
+            model_spec.notes = [f"read by the {name}: the rule-based parser did not recognise "
+                                f"{', '.join(repr(u) for u in parsed.unresolved)}"]
+            st.spec, st.interpreter = model_spec, name
+        else:
+            st.spec, st.interpreter = parsed, "deterministic parser"
+            if model_spec.unresolved:
+                parsed.notes.append(f"{name} could not read it either")
+            else:
+                parsed.notes.append(f"{name} referred to columns that do not exist; its reading was discarded")
+        return "assess"
+
+    def _refs_exist(self, spec: QuerySpec) -> bool:
+        tables = self.cat.tables
+        refs = [spec.group_by, spec.date_column] + [f.column for f in spec.filters]
+        refs += [spec.ratio_filter.column] if spec.ratio_filter else []
+        if spec.table not in tables or (spec.measure and spec.measure not in tables[spec.table].columns):
+            return False
+        return all(r.partition(".")[0] in tables and r.partition(".")[2] in tables[r.partition(".")[0]].columns
+                   for r in refs if r)
 
     def _assess(self, st: AnalysisState) -> str:
         a = st.answerability = assess(st.spec, self.cat)
@@ -205,7 +251,7 @@ class Analyst:
                 "attempts": len(st.attempts)}
 
     def _default_writer(self, plan: Plan, attempt: int, feedback: str | None) -> tuple[str, str]:
-        if self.llm:
+        if self.llm and hasattr(self.llm, "write_code"):  # the local model only reads questions
             try:
                 return self.llm.write_code(plan.text(), feedback), "model"
             except LLMError:

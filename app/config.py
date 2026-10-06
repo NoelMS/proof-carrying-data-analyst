@@ -10,8 +10,10 @@ def _env(name: str, default: str) -> str:
 
 @dataclass(frozen=True)
 class Config:
-    llm_provider: str = "none"  # "anthropic" or "none" (deterministic question parser + code templates)
+    llm_provider: str = "none"  # "anthropic", "local" (Ollama model, reads questions only) or "none" (parser only)
     llm_model: str = "claude-opus-5-5"
+    local_model: str = "pcda-interpreter"
+    ollama_url: str = "http://127.0.0.1:11434"
     sandbox: str = "subprocess"  # "subprocess" or "docker"
     docker_image: str = "pcda-sandbox:latest"
     timeout_s: float = 30.0
@@ -27,11 +29,19 @@ class Config:
                 if sep and not k.strip().startswith("#"):
                     os.environ.setdefault(k.strip(), v.strip())
         provider = _env("PCDA_LLM_PROVIDER", "auto")
-        if provider == "auto":
-            provider = "anthropic" if os.environ.get("ANTHROPIC_API_KEY") else "none"
+        local_model = _env("PCDA_LOCAL_MODEL", cls.local_model)
+        ollama_url = _env("PCDA_OLLAMA_URL", cls.ollama_url)
+        if provider == "auto":  # API key -> Claude; else an installed local model -> local; else the parser
+            if os.environ.get("ANTHROPIC_API_KEY"):
+                provider = "anthropic"
+            else:
+                from .local_model import ollama_status
+                provider = "local" if ollama_status(local_model, ollama_url)["model_installed"] else "none"
         return cls(
             llm_provider=provider,
             llm_model=_env("PCDA_LLM_MODEL", cls.llm_model),
+            local_model=local_model,
+            ollama_url=ollama_url,
             sandbox=_env("PCDA_SANDBOX", cls.sandbox),
             docker_image=_env("PCDA_DOCKER_IMAGE", cls.docker_image),
             timeout_s=float(_env("PCDA_TIMEOUT_S", str(cls.timeout_s))),
