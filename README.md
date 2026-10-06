@@ -1,4 +1,4 @@
-﻿# Proof-Carrying Data Analyst
+# Proof-Carrying Data Analyst
 
 Answers analytical questions over messy, multi-table data, and attaches executable proof to every number it reports.
 

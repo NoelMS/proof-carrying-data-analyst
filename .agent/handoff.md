@@ -1,4 +1,4 @@
-﻿# Handoff
+# Handoff
 
 ## Current implementation status
 Working end to end: ingestion -> profiling -> trap detection -> interpretation -> answerability -> plan ->
