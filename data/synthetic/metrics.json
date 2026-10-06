@@ -1,0 +1,23 @@
+{
+  "revenue": {
+    "table": "orders",
+    "column": "amount",
+    "aggregation": "sum",
+    "description": "Order amount (quantity x unit price) in the order currency."
+  },
+  "order value": {
+    "table": "orders",
+    "column": "amount",
+    "aggregation": "mean",
+    "description": "Amount of a single order."
+  },
+  "payment completion rate": {
+    "table": "payments",
+    "ratio_filter": {
+      "column": "status",
+      "op": "==",
+      "value": "completed"
+    },
+    "description": "Share of payment records with status 'completed'."
+  }
+}

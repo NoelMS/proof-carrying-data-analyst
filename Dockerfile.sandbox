@@ -1,0 +1,5 @@
+# Image for PCDA_SANDBOX=docker: analysis libraries only, no network at run time.
+FROM python:3.13-slim
+RUN pip install --no-cache-dir pandas==3.0.6 numpy==2.5.3 duckdb==1.5.6
+USER 65534:65534
+WORKDIR /work
