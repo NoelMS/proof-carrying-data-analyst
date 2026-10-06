@@ -11,7 +11,7 @@ export function renderHome(main) {
   setTitle("");
   const input = h("textarea", {
     id: "question", class: "command__input", name: "question", rows: "3", required: true, maxlength: "2000",
-    placeholder: "Which region generated the highest revenue in USD?", "aria-describedby": "question-hints question-error",
+    placeholder: "Ask in your own words, e.g. which region sold the most in usd?", "aria-describedby": "question-hints question-error",
   });
   const claim = h("input", { id: "claim", name: "claim", type: "text", inputmode: "decimal", autocomplete: "off", placeholder: "optional" });
   const error = h("p", { class: "command__error", id: "question-error", "aria-live": "polite" });
@@ -21,6 +21,7 @@ export function renderHome(main) {
     input, error,
     h("div", { class: "command__foot" },
       h("div", { class: "command__hints meta", id: "question-hints" },
+        h("span", {}, "Loose wording is fine; how it was read is shown with the result."),
         h("span", {}, h("span", { class: "kbd" }, isMac ? "⌘ ↵" : "Ctrl ↵"), " analyze"),
         h("span", {}, h("span", { class: "kbd" }, "/"), " focus")),
       h("div", { class: "command__claim" },
@@ -75,8 +76,9 @@ export function renderHome(main) {
 function renderData(col, ds) {
   if (!ds) { col.replaceChildren(h("p", { class: "eyebrow", id: "available-data" }, "Available data"), h("p", { class: "meta" }, "Loading datasets…")); return; }
   col.replaceChildren(
-    h("div", { class: "section__head" }, h("h2", { class: "eyebrow", id: "available-data" }, "Available data"),
-      h("a", { class: "link meta", href: "#/data" }, "Inspect data")),
+    h("div", { class: "section__head" }, h("h2", { class: "eyebrow", id: "available-data" },
+        ds.workspace === "uploaded" ? "Available data · your uploads" : "Available data · demonstration"),
+      h("a", { class: "btn btn--secondary", href: "#/data", style: { "min-height": "30px" } }, "Change or add data ", arrow())),
     h("div", { class: "figures" },
       [[pad(ds.totals.tables), "datasets"], [fmtInt(ds.totals.columns), "columns"], [fmtInt(ds.totals.records), "records"]].map(([v, l], i) =>
         reveal(h("div", {}, h("p", { class: "figure__value" }, v), h("p", { class: "figure__label meta" }, l)), i))),

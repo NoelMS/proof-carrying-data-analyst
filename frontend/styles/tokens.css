@@ -1,26 +1,34 @@
+/* Dark is the default theme; [data-theme="light"] switches to the light palette. */
 :root {
-  /* colour: neutral editorial surfaces, one analytical accent */
-  --color-bg: #f5f4f0;
-  --color-text: #111111;
-  --color-secondary: #5f5f5a;
-  --color-muted: #777671;
-  --color-surface: #ecebe6;
-  --color-elevated: #faf9f6;
-  --color-border: #d8d7d1;
-  --color-border-strong: #b5b4ad;
-  --color-accent: #2747d9;
-  --color-accent-soft: #e5e9fb;
-  --color-fail: #9a3b1b;
-  --color-fail-soft: #f4e8e1;
-  --color-caution: #7c5d0b;
+  color-scheme: dark;
+  --color-bg: #141413;
+  --color-text: #ecebe6;
+  --color-secondary: #b4b3ac;
+  --color-muted: #8e8d86;
+  --color-surface: #1e1e1c;
+  --color-elevated: #232321;
+  --color-sidebar: #0d0d0c;
+  --color-border: #2e2e2b;
+  --color-border-strong: #4a4a45;
+  --color-focus: #d8d7d0;
+  --color-field: #1a1a18;
+  /* one accent, reserved for verification and positive state */
+  --color-accent: #7cc49a;
+  --color-accent-soft: rgb(124 196 154 / 0.14);
+  --color-fail: #e48c6e;
+  --color-fail-soft: rgb(228 140 110 / 0.14);
+  --color-caution: #d6b45c;
+  --color-primary: #ecebe6;
+  --color-primary-hover: #ffffff;
+  --color-on-primary: #141413;
+  --color-backdrop: rgb(0 0 0 / 0.55);
 
   /* technical surfaces: code, execution output, logs */
-  --color-tech: #171717;
-  --color-tech-raised: #202020;
+  --color-tech: #0b0b0a;
+  --color-tech-raised: #121211;
   --color-tech-text: #e7e6e1;
   --color-tech-muted: #8f8e88;
-  --color-tech-border: #2e2e2c;
-  --color-tech-accent: #9fb2ff;
+  --color-tech-border: #272725;
 
   --font-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
@@ -43,8 +51,8 @@
   --space-8: 64px;
   --space-9: 96px;
 
-  --radius-sm: 2px;
-  --radius-md: 4px;
+  --radius-sm: 3px;
+  --radius-md: 6px;
 
   --duration-fast: 180ms;
   --duration-normal: 420ms;
@@ -54,6 +62,33 @@
 
   --header-h: 68px;
   --header-h-condensed: 52px;
-  --sidebar-w: 232px;
+  --sidebar-w: 240px;
   --measure: 62ch;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --color-bg: #f5f4f0;
+  --color-text: #111111;
+  --color-secondary: #5f5f5a;
+  --color-muted: #74736e;
+  --color-surface: #ebeae5;
+  --color-elevated: #faf9f6;
+  --color-sidebar: #e6e4dd;
+  --color-border: #d8d7d1;
+  --color-border-strong: #b5b4ad;
+  --color-focus: #111111;
+  --color-field: #fbfaf7;
+  --color-accent: #2e7a4f;
+  --color-accent-soft: rgb(46 122 79 / 0.12);
+  --color-fail: #9a3b1b;
+  --color-fail-soft: rgb(154 59 27 / 0.1);
+  --color-caution: #7c5d0b;
+  --color-primary: #111111;
+  --color-primary-hover: #2c2c2a;
+  --color-on-primary: #f5f4f0;
+  --color-backdrop: rgb(17 17 17 / 0.3);
+  --color-tech: #171717;
+  --color-tech-raised: #202020;
+  --color-tech-border: #2e2e2c;
 }

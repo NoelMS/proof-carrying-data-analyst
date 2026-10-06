@@ -6,6 +6,7 @@
   <title>Proof-Carrying Data Analyst</title>
   <meta name="description" content="Analytical answers over multi-table data, each backed by executable, independently verified proof.">
   <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+  <script src="/scripts/theme.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
@@ -37,9 +38,12 @@
       <a class="nav__link" href="#/history" data-route="history">History</a>
       <a class="nav__link" href="#/system" data-route="system">System</a>
     </nav>
-    <a class="status" id="status" href="#/system" aria-label="System status">
-      <span class="status__dot" aria-hidden="true"></span><span class="status__text">Connecting</span>
-    </a>
+    <div class="header__end">
+      <a class="status" id="status" href="#/system" aria-label="System status">
+        <span class="status__dot" aria-hidden="true"></span><span class="status__text">Connecting</span>
+      </a>
+      <button class="theme-toggle" id="theme-toggle" type="button" aria-pressed="false">Light theme</button>
+    </div>
   </header>
 
   <div class="shell">

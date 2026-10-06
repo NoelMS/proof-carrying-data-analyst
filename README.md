@@ -87,7 +87,7 @@ Run these with the Python that has the requirements installed. If you use the pr
 |---|---|
 | Analysis | Question input (Ctrl/⌘ + Enter to submit, `/` to focus), the available data, and example questions |
 | Analysis / result | Split view. The left side holds the stable record: question, stage timeline, data used, data checks, plan and verification checks. The right side moves from analyzing to executing, verifying, and then the verified result or a refusal. Below sit the evidence, execution output and the executable proof (copy, download, re-run). |
-| Data | Table inventory, relationships, metric definitions and file upload. Each table has an inspector with overview, schema, quality, sample rows and relationships. |
+| Data | Switch between the demonstration data and your uploads. Uploaded files are kept in `.pcda/uploads/` across sessions, and new uploads are added to them; a file with the same name replaces the earlier one. Files can be removed individually. Also shows table inventory, relationships and metric definitions. Each table has an inspector with overview, schema, quality, sample rows and relationships. |
 | Quality | Every detected issue: why it matters and how the analysis handles it |
 | History | Past analyses grouped by day, each reopening its result and proof |
 | System | Live configuration, sandbox health check, security controls, verification checks, and the benchmark (run on demand) |
@@ -98,7 +98,8 @@ Progress comes from the backend. Each workflow stage pushes a state snapshot ove
 |---|---|
 | `GET /api/status` | Configuration and sandbox health |
 | `GET /api/datasets`, `GET /api/datasets/<table>` | Inventory, profiles, sample rows, relationships, issues |
-| `POST /api/workspace` | Upload files (`{"files": [{"name", "data_base64"}]}`) or `{"demo": true}` |
+| `POST /api/workspace` | Add uploads (`{"files": [{"name", "data_base64"}]}`), or switch with `{"demo": true}` / `{"uploaded": true}` |
+| `DELETE /api/uploads/<file>` | Remove one uploaded file |
 | `POST /api/analyze` | Start an analysis (`{"question", "claim"?}`) and return its `id` |
 | `GET /api/analysis/<id>` and `/events` | Latest state, or a live SSE stream of states |
 | `POST /api/analysis/<id>/rerun` | Re-execute and re-verify the shown proof |
@@ -123,7 +124,18 @@ Structured logs (request ID, stage, attempt, status, duration, refusal reason; n
 
 Values are read from the environment, then from `.env`. Real environment variables win.
 
-**Without a model (`none`)**, questions are interpreted by a deterministic parser. It handles totals, averages, medians, counts, distinct counts, rates, growth between two years, top-N, grouping by a column (joined through many-to-one relationships), monthly or yearly grain, date ranges, and a stated reporting currency. Proof code comes from templates.
+**Without a model (`none`)**, questions are interpreted by a deterministic parser. It handles totals, averages, medians, counts, distinct counts, rates, growth between two years, top-N and bottom-N, grouping by a column (joined through many-to-one relationships), monthly or yearly grain, date ranges, and a reporting currency. Proof code comes from templates.
+
+Questions don't need exact phrasing. For example, "region with high revenue usd" reads as total revenue in USD by region, highest one. The parser understands:
+- **Currencies:** ISO codes (`usd`) and unambiguous names (`euros`, `yen`, `dong`), anywhere in the question.
+- **Highest and lowest:** "highest / most / top / best" and "lowest / least / bottom / worst".
+- **Entities without "by":** "which region …", "which carrier shipped the most".
+- **Metric aliases:** declared in `metrics.json` (`"aliases": ["sales", "turnover"]`).
+- **Numeric columns:** named anywhere in the question, for data without metric definitions.
+- **Counts of an entity:** when no measure is named ("orders in 2024", "how many shops").
+- **Misspellings of data words:** corrected with standard-library fuzzy matching ("revnue").
+
+Every loose reading is listed with the result under **Read as**, so the interpretation is visible before the number. Words that match nothing in the data are still refused, never guessed.
 
 **With Claude**, interpretation and proof writing use the model with schema-validated structured output. Model-written code is still policy-checked, sandboxed and verified against the deterministic DuckDB re-computation. If the model is unreachable, the run continues with the deterministic parser and the interpreter field says so.
 
@@ -205,7 +217,7 @@ Exact duplicate rows (identical in every field, including the record ID) are cou
 python -m pytest -q
 ```
 
-The suite (101 tests) covers:
+The suite (115 tests) covers:
 - ingestion: malformed, empty or corrupted files, encodings, hostile column names
 - profiling and trap detection
 - sandbox isolation: environment secrets, subprocess, file reads and writes, network, ctypes, timeout, memory

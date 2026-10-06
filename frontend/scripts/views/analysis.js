@@ -45,7 +45,12 @@ function phase(s) {
 const failedAttempt = (s) => [...s.attempts].reverse().find((a) => a.verification && a.verification.status === "failed");
 const lastAttempt = (s) => s.attempts.at(-1);
 const cap = (t) => (t ? t[0].toUpperCase() + t.slice(1) : "");
-const fmtVal = (v) => (v == null ? "—" : Array.isArray(v) ? `${v.length} values` : typeof v === "object" ? `${Object.keys(v).length} values` : String(v));
+const fmtVal = (v) => {
+  if (v == null) return "—";
+  const entries = Array.isArray(v) ? v : typeof v === "object" ? Object.entries(v) : null;
+  if (!entries) return String(v);
+  return entries.length === 1 ? entries[0].join(": ") : `${entries.length} values`;
+};
 
 function describeMetric(s) {
   const sp = s.spec || {};
@@ -55,7 +60,7 @@ function describeMetric(s) {
   else parts.push(`${AGG[sp.aggregation || "sum"]} ${sp.metric_term || ""}`.trim());
   if (sp.group_by) parts.push(`by ${label(sp.group_by.split(".").pop())}`);
   if (sp.time_grain) parts.push(`per ${sp.time_grain}`);
-  if (sp.top_n) parts.push(`top ${sp.top_n}`);
+  if (sp.top_n) parts.push(sp.top_n === 1 ? (sp.order === "asc" ? "lowest" : "highest") : `${sp.order === "asc" ? "bottom" : "top"} ${sp.top_n}`);
   if (sp.date_from) parts.push(`${sp.date_from} to ${sp.date_to}`);
   if (s.plan?.unit) parts.push(s.plan.unit);
   return parts.join(" · ");
@@ -66,6 +71,7 @@ export function renderAnalysis(main, { id }) {
   setTitle("Analysis");
   const slots = {
     question: h("div", { class: "panel-block" }),
+    interp: h("div", { class: "panel-block" }),
     timeline: h("ol", { class: "timeline", "aria-label": "Analysis progress" }),
     data: h("div", { class: "panel-block" }),
     checks: h("div", { class: "panel-block" }),
@@ -79,7 +85,7 @@ export function renderAnalysis(main, { id }) {
       h("p", { class: "eyebrow" }, "Analysis ", h("span", { class: "mono" }, id))),
     h("div", { class: "split" },
       h("div", { class: "split__left" }, h("div", { class: "split__sticky" },
-        slots.question, slots.timeline, slots.data, slots.checks, slots.plan, slots.verification)),
+        slots.question, slots.interp, slots.timeline, slots.data, slots.checks, slots.plan, slots.verification)),
       stageHost),
     after));
 
@@ -181,6 +187,12 @@ function renderLeft(s, slots, filled) {
     slot.replaceChildren(...[content].flat());
     if (!filled.has(name)) { reveal(slot); filled.add(name); }
   };
+  once("interp", slots.interp, () => s.spec && [
+    h("p", { class: "eyebrow" }, "Read as"),
+    h("p", {}, describeMetric(s) || s.spec.metric_term),
+    s.spec.notes?.length > 0 && h("ul", { class: "interpretation", style: { "margin-top": "var(--space-2)" } },
+      s.spec.notes.map((n) => h("li", {}, n))),
+  ]);
   once("data", slots.data, () => s.datasets.length && [
     h("p", { class: "eyebrow" }, "Data used"),
     h("ul", { class: "datasets-used" }, s.datasets.map((d) =>
@@ -271,17 +283,21 @@ function verifiedStage(s, id) {
   const v = f.verification;
   const isScalar = s.plan.output === "scalar";
   const display = f.display || [];
+  const ranking = s.plan.output === "ranking";
+  const single = ranking && display.length === 1;  // "which region has the highest revenue": one answer
   const top = !isScalar && display.length
-    ? display.reduce((a, b) => (Number(b.value) > Number(a.value) ? b : a), display[0]) : null;
+    ? (ranking ? display[0] : display.reduce((a, b) => (Number(b.value) > Number(a.value) ? b : a), display[0])) : null;
   const numberEl = h("p", { class: "result-number result__number", "aria-label": isScalar ? f.answer : top?.formatted });
+  const showList = !isScalar && !single;
   const stage = h("section", { class: "stage result", "aria-label": "Verified result" },
     h("div", { class: "stage__label" }, h("span", { class: "verdict verdict--verified" }, "Verified result")),
     h("p", { class: "result__metric" }, describeMetric(s)),
+    single && h("p", { class: "result__key" }, top.key),
     numberEl,
-    !isScalar && top && h("p", { class: "meta", style: { "margin-top": "calc(-1 * var(--space-3))", "margin-bottom": "var(--space-5)" } },
-      s.plan.output === "ranking" ? `Rank 1: ${top.key}` : `Highest: ${top.key}`),
-    !isScalar && barChart(display, { columns: Boolean(s.spec?.time_grain), title: describeMetric(s) }),
-    !isScalar && table([s.spec?.group_by ? label(s.spec.group_by.split(".").pop()) : s.spec?.time_grain || "key", "value"],
+    showList && top && h("p", { class: "meta", style: { "margin-top": "calc(-1 * var(--space-3))", "margin-bottom": "var(--space-5)" } },
+      ranking ? `Rank 1: ${top.key}` : `Highest: ${top.key}`),
+    showList && barChart(display, { columns: Boolean(s.spec?.time_grain), title: describeMetric(s) }),
+    showList && table([s.spec?.group_by ? label(s.spec.group_by.split(".").pop()) : s.spec?.time_grain || "key", "value"],
       display.map((d) => [d.key, d.formatted]), { numeric: ["value"], caption: "Verified values" }),
     h("div", { class: "result__statement" },
       h("span", { class: "verdict verdict--verified" }, "Verified"),
@@ -292,12 +308,13 @@ function verifiedStage(s, id) {
     h("div", { class: "btn-row", style: { "margin-top": "var(--space-6)" } },
       h("a", { class: "btn btn--primary", href: "#proof", onclick: (e) => { e.preventDefault(); openProof(); } }, "View proof ", arrow()),
       h("button", { class: "btn btn--secondary", type: "button", onclick: () => diagnostics(s) }, "Diagnostics ", arrow()),
-      h("a", { class: "btn btn--text", href: api.exportUrl(id), download: `analysis-${id}.json` }, "Export analysis (JSON)")));
+      h("a", { class: "btn btn--secondary", href: api.exportUrl(id), download: `analysis-${id}.json` }, "Export JSON")));
   const shown = isScalar ? f.answer : top?.formatted;
   if (shown) {  // "815,497.70 USD" -> large number, smaller unit
     const m = /^(\S+)\s+(\S+)$/.exec(shown);
     const value = h("span", {}, m ? m[1] : shown);
-    numberEl.append(value, m && h("span", { class: "result__unit" }, m[2]));
+    numberEl.append(value);
+    if (m) numberEl.append(h("span", { class: "result__unit" }, m[2]));
     animateNumber(value, m ? m[1] : shown);
   }
   return enter(stage);

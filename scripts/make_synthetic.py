@@ -146,11 +146,15 @@ def main():
 
     metrics = {
         "revenue": {"table": "orders", "column": "amount", "aggregation": "sum",
-                    "description": "Order amount (quantity x unit price) in the order currency."},
+                    "description": "Order amount (quantity x unit price) in the order currency.",
+                    "aliases": ["sales", "turnover", "income", "earnings", "takings"]},
         "order value": {"table": "orders", "column": "amount", "aggregation": "mean",
-                        "description": "Amount of a single order."},
+                        "description": "Amount of a single order.",
+                        "aliases": ["order size", "basket size", "aov", "ticket size"]},
         "payment completion rate": {"table": "payments", "ratio_filter": {"column": "status", "op": "==", "value": "completed"},
-                                    "description": "Share of payment records with status 'completed'."},
+                                    "description": "Share of payment records with status 'completed'.",
+                                    "aliases": ["payment success rate", "payment completion", "completed payment rate",
+                                                "payment rate"]},
     }
     (OUT / "metrics.json").write_text(json.dumps(metrics, indent=2), encoding="utf-8")
     (OUT / "ground_truth.json").write_text(json.dumps(

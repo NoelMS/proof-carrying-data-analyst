@@ -44,6 +44,7 @@ ROOT = Path(__file__).resolve().parent.parent
 FRONTEND = ROOT / "frontend"
 DEMO = ROOT / "data" / "synthetic"
 HISTORY = ROOT / ".pcda" / "history"
+UPLOADS = ROOT / ".pcda" / "uploads"
 MAX_BODY = 100 * 1024 * 1024
 SAMPLE_ROWS = 25
 
@@ -89,35 +90,80 @@ class Run:
 
 
 class App:
-    def __init__(self, cfg: Config, history_dir: Path = HISTORY):
+    """Two workspaces: the demonstration data, and the user's uploads, which persist in `uploads_dir`
+    and accumulate across uploads and restarts. The active choice is remembered too."""
+
+    def __init__(self, cfg: Config, history_dir: Path = HISTORY, uploads_dir: Path = UPLOADS):
         self.cfg = cfg
-        self.history_dir = history_dir
+        self.history_dir, self.uploads_dir = history_dir, uploads_dir
+        history_dir.mkdir(parents=True, exist_ok=True)
+        uploads_dir.mkdir(parents=True, exist_ok=True)
         self.lock = threading.Lock()
         self.runs: dict[str, Run] = {}
         self.workspace_label = "demonstration"
-        self.catalog = build_catalog(load_directory(DEMO, Path(tempfile.mkdtemp(prefix="pcda_demo_"))))
+        self.catalog = self._demo()
+        if self._active_file.exists() and self._active_file.read_text().strip() == "uploaded" and self.uploads():
+            try:
+                self.catalog, self.workspace_label = self._from_uploads(self._upload_files()), "uploaded"
+            except IngestionError:
+                pass  # stay on the demonstration data; the uploads stay listed for removal
         self.sandbox_probe = self._probe()
-        history_dir.mkdir(parents=True, exist_ok=True)
+
+    @property
+    def _active_file(self) -> Path:
+        return self.uploads_dir.parent / "workspace"
 
     def _probe(self) -> dict:
         r = Sandbox(self.cfg).run('print("RESULT: 1")', ROOT, [])
         return {"ready": r.ok, "status": r.status, "error": r.error, "checked_at": round(time.time())}
 
-    def set_workspace(self, files: list[tuple[str, bytes]] | None):
-        if files is None:
-            cat, label = build_catalog(load_directory(DEMO, Path(tempfile.mkdtemp(prefix="pcda_demo_")))), "demonstration"
-        else:
-            src = Path(tempfile.mkdtemp(prefix="pcda_up_"))
-            try:
-                for name, data in files:
-                    (src / Path(name).name).write_bytes(data)
-                cat = build_catalog(build_workspace(sorted(p for p in src.iterdir() if p.is_file()), src / "workspace"))
-            except IngestionError:
-                shutil.rmtree(src, ignore_errors=True)
-                raise
-            label = "uploaded"
+    def _demo(self) -> Catalog:
+        return build_catalog(load_directory(DEMO, Path(tempfile.mkdtemp(prefix="pcda_demo_"))))
+
+    def _upload_files(self) -> list[Path]:
+        return sorted(p for p in self.uploads_dir.iterdir() if p.is_file())
+
+    def _from_uploads(self, files: list[Path]) -> Catalog:
+        return build_catalog(build_workspace(files, Path(tempfile.mkdtemp(prefix="pcda_ws_"))))
+
+    def uploads(self) -> list[dict]:
+        return [{"name": p.name, "bytes": p.stat().st_size} for p in self._upload_files()]
+
+    def _activate(self, cat: Catalog, label: str):
         with self.lock:
             self.catalog, self.workspace_label = cat, label
+        self._active_file.write_text(label)
+
+    def add_uploads(self, files: list[tuple[str, bytes]]):
+        """Validate the new files together with the existing uploads before keeping anything."""
+        staging = Path(tempfile.mkdtemp(prefix="pcda_up_"))
+        try:
+            for p in self._upload_files():
+                shutil.copyfile(p, staging / p.name)
+            for name, data in files:
+                (staging / Path(name).name).write_bytes(data)  # same file name replaces the earlier upload
+            cat = self._from_uploads(sorted(p for p in staging.iterdir() if p.is_file()))
+            for name, data in files:
+                (self.uploads_dir / Path(name).name).write_bytes(data)
+        finally:
+            shutil.rmtree(staging, ignore_errors=True)
+        self._activate(cat, "uploaded")
+
+    def use_demo(self):
+        self._activate(self._demo(), "demonstration")
+
+    def use_uploads(self):
+        if not self.uploads():
+            raise LookupError("No files have been uploaded yet.")
+        self._activate(self._from_uploads(self._upload_files()), "uploaded")
+
+    def remove_upload(self, name: str):
+        path = self.uploads_dir / Path(name).name
+        if not path.is_file():
+            raise LookupError(f"No uploaded file named {name}.")
+        path.unlink()
+        if self.workspace_label == "uploaded":
+            self.use_uploads() if self.uploads() else self.use_demo()
 
     def start(self, question: str, claim) -> str:
         cat = self.catalog
@@ -287,7 +333,7 @@ class Handler(SimpleHTTPRequestHandler):
         cat = self.app.catalog
         tables = [{"name": t, "rows": p.rows, "columns": len(p.columns), "key": p.key,
                    "issues": sum(1 for i in cat.issues if i.table == t)} for t, p in cat.profiles.items()]
-        return {"workspace": self.app.workspace_label, "tables": tables,
+        return {"workspace": self.app.workspace_label, "uploads": self.app.uploads(), "tables": tables,
                 "totals": {"tables": len(tables), "columns": sum(t["columns"] for t in tables),
                            "records": sum(t["rows"] for t in tables)},
                 "relationships": [r.__dict__ for r in cat.relationships],
@@ -363,15 +409,19 @@ class Handler(SimpleHTTPRequestHandler):
         if parts == ["workspace"]:
             try:
                 if body.get("demo"):
-                    app.set_workspace(None)
+                    app.use_demo()
+                elif body.get("uploaded"):
+                    app.use_uploads()
                 else:
                     files = [(str(f["name"]), base64.b64decode(f["data_base64"], validate=True))
                              for f in body.get("files") or []]
                     if not files:
                         return self._error(HTTPStatus.BAD_REQUEST, "No files were provided.")
-                    app.set_workspace(files)
+                    app.add_uploads(files)
             except IngestionError as e:
                 return self._error(HTTPStatus.UNPROCESSABLE_ENTITY, str(e))
+            except LookupError as e:
+                return self._error(HTTPStatus.CONFLICT, str(e))
             except (KeyError, TypeError, binascii.Error):
                 return self._error(HTTPStatus.BAD_REQUEST, "Each file needs a name and base64 data.")
             return self._json(self._datasets())
@@ -379,6 +429,19 @@ class Handler(SimpleHTTPRequestHandler):
             if app.workspace_label != "demonstration":
                 return self._error(HTTPStatus.CONFLICT, "The benchmark runs on the demonstration data only.")
             return self._json(run_and_save(app.catalog, DEMO / "ground_truth.json", analyst=Analyst(app.catalog, app.cfg)))
+        return self._error(HTTPStatus.NOT_FOUND, "Unknown endpoint.")
+
+    # ---------------------------------------------------------------- DELETE
+    def do_DELETE(self):
+        parts = unquote(urlparse(self.path).path).strip("/").split("/")[1:]
+        if len(parts) == 2 and parts[0] == "uploads":
+            try:
+                self.app.remove_upload(parts[1])
+            except LookupError as e:
+                return self._error(HTTPStatus.NOT_FOUND, str(e))
+            except IngestionError as e:
+                return self._error(HTTPStatus.UNPROCESSABLE_ENTITY, str(e))
+            return self._json(self._datasets())
         return self._error(HTTPStatus.NOT_FOUND, "Unknown endpoint.")
 
 

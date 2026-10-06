@@ -3,13 +3,26 @@
     "table": "orders",
     "column": "amount",
     "aggregation": "sum",
-    "description": "Order amount (quantity x unit price) in the order currency."
+    "description": "Order amount (quantity x unit price) in the order currency.",
+    "aliases": [
+      "sales",
+      "turnover",
+      "income",
+      "earnings",
+      "takings"
+    ]
   },
   "order value": {
     "table": "orders",
     "column": "amount",
     "aggregation": "mean",
-    "description": "Amount of a single order."
+    "description": "Amount of a single order.",
+    "aliases": [
+      "order size",
+      "basket size",
+      "aov",
+      "ticket size"
+    ]
   },
   "payment completion rate": {
     "table": "payments",
@@ -18,6 +31,12 @@
       "op": "==",
       "value": "completed"
     },
-    "description": "Share of payment records with status 'completed'."
+    "description": "Share of payment records with status 'completed'.",
+    "aliases": [
+      "payment success rate",
+      "payment completion",
+      "completed payment rate",
+      "payment rate"
+    ]
   }
 }

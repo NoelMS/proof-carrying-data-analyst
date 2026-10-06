@@ -10,55 +10,87 @@ export function renderDataList(main) {
   setTitle("Data");
   const ds = store.datasets;
   if (!ds) { main.replaceChildren(h("div", { class: "view" }, h("p", { class: "eyebrow" }, "Loading datasets"))); return; }
-  const fileInput = h("input", { type: "file", multiple: true, accept: ".csv,.xlsx,.xlsm,.json", class: "sr-only", id: "upload" });
-  const status = h("p", { class: "meta", "aria-live": "polite" });
-  fileInput.addEventListener("change", async () => {
-    if (!fileInput.files.length) return;
-    status.textContent = `Loading ${fileInput.files.length} file(s) and profiling…`;
+  const uploads = ds.uploads || [];
+  const status = h("p", { class: "meta", "aria-live": "polite", style: { "margin-top": "var(--space-3)" } });
+
+  const act = async (message, call, done) => {
+    status.textContent = message;
     try {
-      const datasets = await api.upload(await filesToPayload(fileInput.files));
+      const datasets = await call();
       update({ datasets, status: await api.status() });
-      toast("Data loaded");
-      renderDataList(main);
+      if (done) toast(done);
     } catch (e) {
       status.textContent = e instanceof ConnectionError ? "Connection lost." : e.message;
       if (e instanceof ConnectionError) update({ connection: "lost" });
     }
-    fileInput.value = "";
-  });
-  const useDemo = async () => {
-    status.textContent = "Loading demonstration data…";
-    try {
-      const datasets = await api.useDemo();
-      update({ datasets, status: await api.status() });
-      renderDataList(main);
-    } catch (e) { status.textContent = e.message; }
   };
+  const addFiles = async (files) => {
+    if (!files.length) return;
+    await act(`Adding ${files.length} file(s) and profiling…`, async () => api.upload(await filesToPayload(files)), "Data added");
+  };
+
+  const fileInput = h("input", { type: "file", multiple: true, accept: ".csv,.xlsx,.xlsm,.json", class: "sr-only", id: "upload" });
+  fileInput.addEventListener("change", () => { addFiles([...fileInput.files]); fileInput.value = ""; });
+  const drop = h("div", { class: "dropzone", role: "button", tabindex: "0", "aria-describedby": "drop-help",
+      onclick: () => fileInput.click(),
+      onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileInput.click(); } } },
+    h("span", { class: "btn btn--primary", "aria-hidden": "true" }, "Add files ", arrow()),
+    h("span", { class: "meta", id: "drop-help" }, "or drop CSV / Excel files here. Files are added to your uploads; a file with the same name replaces the earlier one."));
+  drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("is-over"); });
+  drop.addEventListener("dragleave", () => drop.classList.remove("is-over"));
+  drop.addEventListener("drop", (e) => { e.preventDefault(); drop.classList.remove("is-over"); addFiles([...e.dataTransfer.files]); });
+
+  const choice = (label, value, extra, disabled) => h("button", {
+    type: "button", "aria-pressed": String(ds.workspace === value), disabled: disabled || null,
+    onclick: () => ds.workspace !== value && act("Switching workspace…",
+      value === "demonstration" ? api.useDemo : api.useUploads),
+  }, label, extra != null && h("span", { class: "count" }, extra));
 
   main.replaceChildren(h("div", { class: "view" },
     h("header", { class: "view__head" },
-      h("p", { class: "eyebrow" }, `Datasets · ${ds.workspace} workspace`),
-      h("h1", { class: "title", tabindex: "-1" }, `${pad(ds.totals.tables)} tables, ${fmtInt(ds.totals.records)} records.`),
-      h("div", { class: "btn-row", style: { "margin-top": "var(--space-6)" } },
-        h("label", { class: "btn btn--secondary", for: "upload", tabindex: "0",
-          onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileInput.click(); } } }, "Add files ", arrow()),
-        fileInput,
-        ds.workspace !== "demonstration" && h("button", { class: "btn btn--text", type: "button", onclick: useDemo }, "Use demonstration data"),
-        h("span", { class: "meta" }, `CSV, Excel (.xlsx, .xlsm) and an optional metrics.json. Uploading replaces the current workspace.`)),
+      h("p", { class: "eyebrow" }, ds.workspace === "uploaded" ? "Datasets · your uploads" : "Datasets · demonstration data"),
+      h("h1", { class: "title", tabindex: "-1" },
+        `${ds.totals.tables} ${ds.totals.tables === 1 ? "table" : "tables"}, ${fmtInt(ds.totals.records)} ${ds.totals.records === 1 ? "record" : "records"}.`),
+      h("div", { class: "workspace-bar" },
+        h("div", {},
+          h("p", { class: "eyebrow", style: { "margin-bottom": "var(--space-2)" } }, "Analyze"),
+          h("div", { class: "segmented", role: "group", "aria-label": "Workspace" },
+            choice("Demonstration data", "demonstration"),
+            choice("Your uploads", "uploaded", uploads.length ? `${uploads.length}` : "0", !uploads.length))),
+        h("p", { class: "meta", style: { "max-width": "38ch" } }, ds.workspace === "uploaded"
+          ? "Questions run against every file you have uploaded."
+          : uploads.length ? "Your uploads are kept. Switch back at any time." : "Upload files to analyze your own data.")),
       status),
-    h("div", { class: "rows" }, ds.tables.map((t, i) => reveal(
-      h("a", { class: "row", href: `#/data/${encodeURIComponent(t.name)}` },
-        h("span", { class: "row__index" }, pad(i + 1)),
-        h("span", { class: "row__title" }, t.name, h("span", { class: "row__sub" }, t.key ? `key ${t.key}` : "no key detected")),
-        h("span", { class: "row__meta num" }, `${fmtInt(t.rows)} rows · ${t.columns} cols`,
-          t.issues ? h("span", { class: "row__sub" }, `${t.issues} issue${t.issues > 1 ? "s" : ""}`) : null),
-        h("span", { class: "row__go" }, h("span", { class: "row__go-label" }, "Inspect"), arrow())), i))),
+    h("section", { class: "section", style: { "margin-top": "var(--space-6)" } },
+      h("div", { class: "two-col" },
+        h("div", {}, drop, fileInput),
+        h("div", {},
+          h("div", { class: "section__head" }, h("h2", { class: "eyebrow" }, "Your uploaded files"),
+            h("span", { class: "meta" }, uploads.length ? `${uploads.length} kept` : "none yet")),
+          uploads.length
+            ? h("ul", { class: "uploads" }, uploads.map((u) => h("li", {},
+                h("span", {}, u.name, " ", h("span", { class: "mono meta" }, `${fmtInt(Math.ceil(u.bytes / 1024))} KB`)),
+                h("button", { class: "btn btn--secondary", type: "button", style: { "min-height": "30px" },
+                  "aria-label": `Remove ${u.name}`,
+                  onclick: () => act(`Removing ${u.name}…`, () => api.removeUpload(u.name), "File removed") }, "Remove"))))
+            : h("p", { class: "meta" }, "Uploaded files stay here between sessions.")))),
+    h("section", { class: "section" },
+      h("div", { class: "section__head" }, h("h2", { class: "eyebrow" }, "Tables in use"),
+        h("span", { class: "meta" }, ds.workspace === "uploaded" ? "From your uploads" : "Demonstration data")),
+      h("div", { class: "rows", style: { "border-top": "0" } }, ds.tables.map((t, i) => reveal(
+        h("a", { class: "row", href: `#/data/${encodeURIComponent(t.name)}` },
+          h("span", { class: "row__index" }, pad(i + 1)),
+          h("span", { class: "row__title" }, t.name, h("span", { class: "row__sub" }, t.key ? `key ${t.key}` : "no key detected")),
+          h("span", { class: "row__meta num" }, `${fmtInt(t.rows)} rows · ${t.columns} cols`,
+            t.issues ? h("span", { class: "row__sub" }, `${t.issues} issue${t.issues > 1 ? "s" : ""}`) : null),
+          h("span", { class: "row__go" }, h("span", { class: "row__go-label" }, "Inspect"), arrow())), i)))),
     h("section", { class: "section" },
       h("div", { class: "section__head" }, h("h2", { class: "eyebrow" }, "Relationships"), h("span", { class: "meta" }, "Detected from key columns")),
       relationships(ds.relationships)),
     ds.metrics && Object.keys(ds.metrics).length > 0 && h("section", { class: "section" },
       h("div", { class: "section__head" }, h("h2", { class: "eyebrow" }, "Metric definitions"), h("span", { class: "meta" }, "From metrics.json")),
-      table(["metric", "table", "definition"], Object.entries(ds.metrics).map(([k, d]) => [k, d.table, d.description || (d.column ? `${d.aggregation || "sum"} of ${d.column}` : "rate")])))));
+      table(["metric", "also called", "table", "definition"], Object.entries(ds.metrics).map(([k, d]) =>
+        [k, (d.aliases || []).join(", ") || "—", d.table, d.description || (d.column ? `${d.aggregation || "sum"} of ${d.column}` : "rate")])))));
 }
 
 export function relationships(rels) {

@@ -32,7 +32,8 @@ class Plan:
         fmt = "integer" if self.integer_result else f"decimal string with exactly {self.precision} decimal places"
         return {"scalar": f"a single {fmt}",
                 "mapping": f"a JSON object mapping each group key (string, sorted ascending) to a {fmt}",
-                "ranking": f"a JSON list of [key, value] pairs, value is a {fmt}, sorted by value descending then key "
+                "ranking": f"a JSON list of [key, value] pairs, value is a {fmt}, sorted by value "
+                           f"{'descending' if self.spec.order == 'desc' else 'ascending'} then key "
                            f"ascending, first {self.spec.top_n} only"}[self.output]
 
     def text(self) -> str:
@@ -85,7 +86,8 @@ def build_plan(question: str, spec: QuerySpec, a: Assessment, cat: Catalog) -> P
         elif spec.time_grain:
             agg += f" per {spec.time_grain} of {spec.date_column} ({'YYYY-MM' if spec.time_grain == 'month' else 'YYYY'})"
         if spec.top_n:
-            agg += f"; keep the top {spec.top_n} by value (ties broken by key ascending)"
+            agg += (f"; keep the {'highest' if spec.order == 'desc' else 'lowest'} {spec.top_n} by value "
+                    "(ties broken by key ascending)")
         s.append(agg + ".")
     if not p.integer_result:
         s.append(f"Round once at the end to {p.precision} decimal places, half-to-even.")

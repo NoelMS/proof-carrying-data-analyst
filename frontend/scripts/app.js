@@ -71,16 +71,20 @@ function renderStatus(s) {
 /* ---------------------------------------------------------------- sidebar */
 function renderSidebar(s) {
   const group = (title, ...children) => h("section", { class: "sidebar__group" }, h("h2", { class: "eyebrow" }, title), ...children);
-  const item = (href, left, right, truncate) => h("li", {}, h("a", { class: `sidebar__item${truncate ? " sidebar__item--truncate" : ""}`, href },
+  const here = decodeURIComponent(location.hash || "#/").replace(/\/(overview|schema|quality|sample|relationships)$/, "");
+  const item = (href, left, right, truncate, title) => h("li", {}, h("a", {
+    class: `sidebar__item${truncate ? " sidebar__item--truncate" : ""}`, href, title,
+    "aria-current": decodeURIComponent(href) === here ? "page" : null },
     h("span", {}, left), right != null && h("span", { class: "num" }, right)));
   sidebar.replaceChildren(
-    group("Data", s.datasets
+    group(s.datasets?.workspace === "uploaded" ? "Data · your uploads" : "Data · demonstration", s.datasets
       ? h("ul", { class: "sidebar__list" }, s.datasets.tables.map((t) => item(`#/data/${encodeURIComponent(t.name)}`, t.name, fmtInt(t.rows))))
       : h("p", { class: "meta" }, s.connection === "lost" ? "Unavailable" : "Loading")),
     group("Analysis",
       h("ul", { class: "sidebar__list" },
         item("#/", h("span", {}, "New question ", arrow())),
-        (s.history || []).slice(0, 6).map((it) => item(`#/analysis/${it.id}`, it.question, it.status === "verified" ? "V" : it.status === "refused" ? "R" : "…", true))),
+        (s.history || []).slice(0, 6).map((it) => item(`#/analysis/${it.id}`, it.question, it.status === "verified" ? "V" : it.status === "refused" ? "R" : "…", true,
+          `${it.question} (${it.status || "running"})`))),
       s.history?.length > 6 && h("a", { class: "link meta", href: "#/history" }, "All history")),
     group("System", s.status
       ? h("ul", { class: "sidebar__list" },
@@ -126,6 +130,24 @@ function intro() {
   setTimeout(() => { el.hidden = true; }, 1080);
 }
 
+/* ---------------------------------------------------------------- theme (dark by default) */
+function initTheme() {
+  const btn = document.getElementById("theme-toggle");
+  const sync = () => {
+    const light = document.documentElement.dataset.theme === "light";
+    btn.textContent = light ? "Dark theme" : "Light theme";
+    btn.setAttribute("aria-pressed", String(light));
+  };
+  btn.addEventListener("click", () => {
+    const light = document.documentElement.dataset.theme !== "light";
+    if (light) document.documentElement.dataset.theme = "light";
+    else delete document.documentElement.dataset.theme;
+    try { localStorage.setItem("pcda-theme", light ? "light" : "dark"); } catch { /* not persisted */ }
+    sync();
+  });
+  sync();
+}
+
 /* ---------------------------------------------------------------- boot */
 // views that read the store re-render when the data they show arrives or changes
 const DEPENDS = { data: "datasets", quality: "datasets", system: "status", history: "history" };
@@ -141,10 +163,11 @@ subscribe((s) => {
 });
 
 intro();
+initTheme();
 initDrawer();
 initShortcuts();
 initScrollEffects(document.getElementById("header"), document.getElementById("scroll-progress"));
-addEventListener("hashchange", () => route());
+addEventListener("hashchange", () => { route(); renderSidebar(store); });
 route({ animate: false });
 renderStatus(store);
 renderSidebar(store);

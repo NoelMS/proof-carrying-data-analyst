@@ -103,7 +103,7 @@ def _pandas_aggregate(plan: Plan, q: str) -> list[str]:
                     "result = fmt((after - before) / before)"]
     if s.kind == "ranking":
         return L + ["totals = {k: aggregate(g) for k, g in groups.items()}",
-                    f"ranked = sorted(totals.items(), key=lambda kv: (-kv[1], kv[0]))[:{s.top_n}]",
+                    f"ranked = sorted(totals.items(), key=lambda kv: ({'-' if s.order == 'desc' else ''}kv[1], kv[0]))[:{s.top_n}]",
                     "result = [[k, fmt(v)] for k, v in ranked]"]
     return L + ["result = {k: fmt(aggregate(g)) for k, g in sorted(groups.items())}"]
 
@@ -174,7 +174,7 @@ def duckdb_check(plan: Plan) -> str:
         "ratio": "result = fmt(values['*'])",
         "mapping": "result = {k: fmt(v) for k, v in sorted(values.items())}",
         "growth": f"before, after = values[{s.growth_from!r}], values[{s.growth_to!r}]\nresult = fmt((after - before) / before)",
-        "ranking": f"ranked = sorted(values.items(), key=lambda kv: (-kv[1], kv[0]))[:{s.top_n}]\n"
+        "ranking": f"ranked = sorted(values.items(), key=lambda kv: ({'-' if s.order == 'desc' else ''}kv[1], kv[0]))[:{s.top_n}]\n"
                    "result = [[k, fmt(v)] for k, v in ranked]",
     }[s.kind if s.kind in ("ratio", "growth", "ranking") else plan.output]
     return f'''"""Independent check: recompute the plan in DuckDB SQL."""

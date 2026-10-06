@@ -14,7 +14,7 @@ from tests.conftest import CFG
 
 @pytest.fixture(scope="module")
 def base(tmp_path_factory):
-    Handler.app = App(CFG, history_dir=tmp_path_factory.mktemp("history"))
+    Handler.app = App(CFG, history_dir=tmp_path_factory.mktemp("history"), uploads_dir=tmp_path_factory.mktemp("pcda") / "uploads")
     httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     yield f"http://127.0.0.1:{httpd.server_port}"
@@ -90,11 +90,25 @@ def test_input_validation(base):
         get(f"{base}/../app/api.py")
 
 
-def test_upload_replaces_workspace_then_demo(base):
-    csv = base64.b64encode(b"sale_id,amount\n1,500\n2,750\n").decode()
-    status, d = post(f"{base}/api/workspace", {"files": [{"name": "sales.csv", "data_base64": csv}]})
+def test_uploads_accumulate_persist_and_switch(base):
+    enc = lambda b: base64.b64encode(b).decode()  # noqa: E731
+    status, d = post(f"{base}/api/workspace", {"files": [{"name": "sales.csv", "data_base64": enc(b"sale_id,amount\n1,500\n2,750\n")}]})
     assert status == 200 and [t["name"] for t in d["tables"]] == ["sales"]
     rid, _ = run(base, "What is the total amount?", claim="1250")
     assert json.loads(get(f"{base}/api/analysis/{rid}")[2])["final"]["status"] == "verified"
+    status, d = post(f"{base}/api/workspace", {"files": [{"name": "shops.csv", "data_base64": enc(b"shop_id,name\ns1,North\n")}]})
+    assert sorted(t["name"] for t in d["tables"]) == ["sales", "shops"]  # earlier upload kept
     assert post(f"{base}/api/workspace", {"files": [{"name": "x.csv", "data_base64": ""}]})[0] == 422
-    assert post(f"{base}/api/workspace", {"demo": True})[0] == 200
+    assert sorted(u["name"] for u in json.loads(get(f"{base}/api/datasets")[2])["uploads"]) == ["sales.csv", "shops.csv"]
+
+    assert post(f"{base}/api/workspace", {"demo": True})[1]["workspace"] == "demonstration"
+    status, d = post(f"{base}/api/workspace", {"uploaded": True})
+    assert d["workspace"] == "uploaded" and len(d["tables"]) == 2
+
+    restarted = App(CFG, history_dir=Handler.app.history_dir, uploads_dir=Handler.app.uploads_dir)
+    assert restarted.workspace_label == "uploaded" and set(restarted.catalog.tables) == {"sales", "shops"}
+
+    req = urllib.request.Request(f"{base}/api/uploads/shops.csv", method="DELETE")
+    with urllib.request.urlopen(req) as r:
+        assert [t["name"] for t in json.loads(r.read())["tables"]] == ["sales"]
+    post(f"{base}/api/workspace", {"demo": True})

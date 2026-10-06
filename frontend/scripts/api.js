@@ -37,6 +37,8 @@ export const api = {
   runBenchmark: () => request("/api/benchmark", { method: "POST", body: {} }),
   upload: (files) => request("/api/workspace", { method: "POST", body: { files } }),
   useDemo: () => request("/api/workspace", { method: "POST", body: { demo: true } }),
+  useUploads: () => request("/api/workspace", { method: "POST", body: { uploaded: true } }),
+  removeUpload: (name) => request(`/api/uploads/${enc(name)}`, { method: "DELETE" }),
   exportUrl: (id) => `/api/analysis/${enc(id)}/export`,
 };
 

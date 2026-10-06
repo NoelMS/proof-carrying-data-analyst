@@ -11,6 +11,7 @@
   .nav { grid-column: 1 / -1; order: 3; overflow-x: auto; gap: var(--space-5); padding-bottom: var(--space-1); }
   .status { padding-left: 0; }
   .shell { grid-template-columns: 1fr; }
+  .header, .shell, .footer { background: var(--color-bg); }
   .sidebar { display: none; }
   .main { padding: var(--space-6) var(--space-5) var(--space-8); }
   .footer { grid-template-columns: 1fr; padding: var(--space-5); }
