@@ -19,11 +19,16 @@ def _rate(n: int, d: int) -> float | None:
     return round(n / d, 4) if d else None
 
 
-def run_benchmark(analyst: Analyst, cases: list[dict]) -> dict:
+def run_benchmark(analyst: Analyst, cases: list[dict], progress=None) -> dict:
+    """`progress(event)` receives {"type": "case_start" | "stage" | "case_done", ...} as work happens."""
     rows, attempts, exec_ok, verified_attempts, reproduced = [], 0, 0, 0, 0
     t0 = time.monotonic()
-    for case in cases:
-        st = analyst.run(case["question"])
+    emit = progress or (lambda e: None)
+    for i, case in enumerate(cases):
+        emit({"type": "case_start", "index": i, "question": case["question"], "answerable": case["answerable"]})
+        tc = time.monotonic()
+        st = analyst.run(case["question"], on_event=lambda s, i=i: emit(
+            {"type": "stage", "index": i, "stage": s.stages[-1]["stage"], "next": s.stages[-1].get("next")}))
         f = st.final
         verified = f["status"] == "verified"
         correct = verified and case["answerable"] and normalize(f["numeric_value"]) == normalize(case["expected"])
@@ -31,13 +36,23 @@ def run_benchmark(analyst: Analyst, cases: list[dict]) -> dict:
             attempts += 1
             exec_ok += bool(at.execution and at.execution.ok)
             verified_attempts += bool(at.verification and at.verification.passed)
+        repro = None
         if verified:  # reproduce the shown proof once more, outside the workflow
+            emit({"type": "stage", "index": i, "stage": "answer", "next": "reproduce"})
             r = analyst.sandbox.run(f["proof_code"], analyst.cat.workspace.data_dir, st.plan.tables)
-            reproduced += r.ok and normalize(r.result) == normalize(f["numeric_value"])
-        rows.append({"question": case["question"], "answerable": case["answerable"], "status": f["status"],
-                     "correct": correct if case["answerable"] else not verified,
-                     "confident_wrong": verified and not correct,
-                     "detail": f.get("answer") if verified else f.get("reason")})
+            repro = bool(r.ok and normalize(r.result) == normalize(f["numeric_value"]))
+            reproduced += repro
+        row = {"question": case["question"], "answerable": case["answerable"], "status": f["status"],
+               "correct": correct if case["answerable"] else not verified,
+               "confident_wrong": verified and not correct,
+               "expected": case["expected"], "got": f.get("numeric_value"),
+               "attempts": len(st.attempts), "reproduced": repro,
+               "duration_s": round(time.monotonic() - tc, 2),
+               "detail": f.get("answer") if verified else f.get("reason")}
+        if repro is not None:
+            emit({"type": "stage", "index": i, "stage": "reproduce", "next": None})
+        rows.append(row)
+        emit({"type": "case_done", "index": i, "row": row})
     ans = [r for r in rows if r["answerable"]]
     unans = [r for r in rows if not r["answerable"]]
     n_verified = sum(r["status"] == "verified" for r in rows)
@@ -57,8 +72,9 @@ def run_benchmark(analyst: Analyst, cases: list[dict]) -> dict:
     }
 
 
-def run_and_save(catalog: Catalog, cases_file: Path, out: Path = RESULTS_FILE, analyst: Analyst | None = None) -> dict:
+def run_and_save(catalog: Catalog, cases_file: Path, out: Path = RESULTS_FILE, analyst: Analyst | None = None,
+                 progress=None) -> dict:
     cases = json.loads(Path(cases_file).read_text(encoding="utf-8"))
-    report = run_benchmark(analyst or Analyst(catalog), cases)
+    report = run_benchmark(analyst or Analyst(catalog), cases, progress)
     out.write_text(json.dumps(report, indent=2), encoding="utf-8")
     return report

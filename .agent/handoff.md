@@ -16,6 +16,8 @@ code generation -> sandbox execution -> independent verification -> repair/refus
 - T-09 Web interface: vanilla HTML/CSS/JS in `frontend/`, stdlib HTTP + SSE API in `app/api.py`; CLI in `scripts/cli.py`. Streamlit was removed.
 - T-10 Synthetic data + ground truth, pytest suite, benchmark, README, security hardening.
 
+- T-11 Data fixes with preview/confirm/rollback (`app/fixes.py`), Workbench and runnable bundles, cross-session re-run, live benchmark progress, themed scrollbars.
+
 ## Current task
 None in progress.
 
@@ -27,7 +29,7 @@ None in progress.
 - The deterministic parser's grammar is limited (see README > Configuration).
 
 ## Tests executed
-`python -m pytest -q`: all 115 pass on Windows 11 with Python 3.13, in both the project venv (pandas 3.0) and the user's global Python 3.13 (pandas 2.3). Docker tests ran with Docker Desktop and `pcda-sandbox:latest`.
+`python -m pytest -q`: all 122 pass on Windows 11 with Python 3.13, in both the project venv (pandas 3.0) and the user's global Python 3.13 (pandas 2.3). Docker tests ran with Docker Desktop and `pcda-sandbox:latest`.
 `python scripts/cli.py benchmark`: 19 questions, all metrics 1.0, confident-wrong rate 0.0.
 
 ## Tests failing

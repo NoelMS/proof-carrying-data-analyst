@@ -12,20 +12,30 @@ Endpoints (JSON unless noted):
     GET  /api/analysis/<id>/events        Server-Sent Events: state after every workflow stage
     GET  /api/analysis/<id>/export        analysis as a JSON download
     POST /api/analysis/<id>/rerun         re-execute and re-verify the shown proof
+    GET  /api/analysis/<id>/bundle        zip: proof.py, its data, requirements, run script
+    POST /api/analysis/<id>/verify        {"code"?} run code (default: the proof) and every verification check
+    POST /api/run                         {"code", "tables"} run code in the sandbox against the workspace data
+    GET  /api/fixes                       proposed data fixes and the change log
+    POST /api/fixes/preview|apply         {"fix_id", "choice"?, "value"?, "token" (apply)} preview / confirm a fix
+    POST /api/fixes/rollback|restore      {"entry_id"} undo one change / {"table"} restore the original table
     GET  /api/history                     past analyses (newest first)
-    GET  /api/benchmark, POST /api/benchmark
+    GET  /api/benchmark, POST /api/benchmark, GET /api/benchmark/progress
 
 The server binds to localhost. POST bodies must be application/json, which a plain
 cross-site HTML form cannot send.
 """
 import base64
 import binascii
+import io
 import json
+import os
 import shutil
+import sys
 import tempfile
 import threading
 import time
 import uuid
+import zipfile
 from dataclasses import dataclass, field
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -34,17 +44,22 @@ from urllib.parse import unquote, urlparse
 
 from .benchmark import RESULTS_FILE, run_and_save
 from .catalog import Catalog, build_catalog
+from .answerability import assess
 from .config import Config
-from .ingestion import READERS, IngestionError, build_workspace, load_directory
+from .fixes import FixError, FixStore, as_dict, diff, fingerprint, option_by_id, propose, transform
+from .ingestion import READERS, IngestionError, build_workspace, load_directory, read_file
+from .planning import build_plan
+from .question import QuerySpec
 from .sandbox import Sandbox
-from .verification import verify
+from .verification import normalize, verify
 from .workflow import AnalysisState, Analyst, format_value, setup_logging
 
 ROOT = Path(__file__).resolve().parent.parent
 FRONTEND = ROOT / "frontend"
 DEMO = ROOT / "data" / "synthetic"
-HISTORY = ROOT / ".pcda" / "history"
-UPLOADS = ROOT / ".pcda" / "uploads"
+STATE = Path(os.environ.get("PCDA_STATE_DIR") or ROOT / ".pcda")  # history, uploads, fixes, active workspace
+HISTORY = STATE / "history"
+UPLOADS = STATE / "uploads"
 MAX_BODY = 100 * 1024 * 1024
 SAMPLE_ROWS = 25
 
@@ -91,7 +106,8 @@ class Run:
 
 class App:
     """Two workspaces: the demonstration data, and the user's uploads, which persist in `uploads_dir`
-    and accumulate across uploads and restarts. The active choice is remembered too."""
+    and accumulate across uploads and restarts. The active choice is remembered too. Confirmed data
+    fixes are stored per workspace as overrides (see fixes.py) and applied whenever it is loaded."""
 
     def __init__(self, cfg: Config, history_dir: Path = HISTORY, uploads_dir: Path = UPLOADS):
         self.cfg = cfg
@@ -100,11 +116,12 @@ class App:
         uploads_dir.mkdir(parents=True, exist_ok=True)
         self.lock = threading.Lock()
         self.runs: dict[str, Run] = {}
+        self.bench: dict = {"running": False}
         self.workspace_label = "demonstration"
-        self.catalog = self._demo()
+        self.catalog = self._build("demonstration")
         if self._active_file.exists() and self._active_file.read_text().strip() == "uploaded" and self.uploads():
             try:
-                self.catalog, self.workspace_label = self._from_uploads(self._upload_files()), "uploaded"
+                self.catalog, self.workspace_label = self._build("uploaded"), "uploaded"
             except IngestionError:
                 pass  # stay on the demonstration data; the uploads stay listed for removal
         self.sandbox_probe = self._probe()
@@ -113,18 +130,22 @@ class App:
     def _active_file(self) -> Path:
         return self.uploads_dir.parent / "workspace"
 
+    def fix_store(self, label: str | None = None) -> FixStore:
+        return FixStore(self.uploads_dir.parent / "fixes" / (label or self.workspace_label))
+
     def _probe(self) -> dict:
         r = Sandbox(self.cfg).run('print("RESULT: 1")', ROOT, [])
         return {"ready": r.ok, "status": r.status, "error": r.error, "checked_at": round(time.time())}
 
-    def _demo(self) -> Catalog:
-        return build_catalog(load_directory(DEMO, Path(tempfile.mkdtemp(prefix="pcda_demo_"))))
-
     def _upload_files(self) -> list[Path]:
         return sorted(p for p in self.uploads_dir.iterdir() if p.is_file())
 
-    def _from_uploads(self, files: list[Path]) -> Catalog:
-        return build_catalog(build_workspace(files, Path(tempfile.mkdtemp(prefix="pcda_ws_"))))
+    def _build(self, label: str, files: list[Path] | None = None, with_fixes: bool = True) -> Catalog:
+        dest = Path(tempfile.mkdtemp(prefix="pcda_ws_"))
+        ws = load_directory(DEMO, dest) if label == "demonstration" else build_workspace(files or self._upload_files(), dest)
+        if with_fixes:
+            self.fix_store(label).apply_overrides(ws)
+        return build_catalog(ws)
 
     def uploads(self) -> list[dict]:
         return [{"name": p.name, "bytes": p.stat().st_size} for p in self._upload_files()]
@@ -140,31 +161,79 @@ class App:
         try:
             for p in self._upload_files():
                 shutil.copyfile(p, staging / p.name)
+            new_tables = set()
             for name, data in files:
-                (staging / Path(name).name).write_bytes(data)  # same file name replaces the earlier upload
-            cat = self._from_uploads(sorted(p for p in staging.iterdir() if p.is_file()))
+                path = staging / Path(name).name
+                path.write_bytes(data)  # same file name replaces the earlier upload
+                if path.suffix.lower() in READERS:
+                    new_tables |= set(read_file(path))
+            self._build("uploaded", sorted(p for p in staging.iterdir() if p.is_file()), with_fixes=False)
             for name, data in files:
                 (self.uploads_dir / Path(name).name).write_bytes(data)
         finally:
             shutil.rmtree(staging, ignore_errors=True)
-        self._activate(cat, "uploaded")
+        store = self.fix_store("uploaded")
+        for t in new_tables:  # a re-uploaded file replaces any fixes made to its old version
+            store.restore_original(t)
+        self._activate(self._build("uploaded"), "uploaded")
 
     def use_demo(self):
-        self._activate(self._demo(), "demonstration")
+        self._activate(self._build("demonstration"), "demonstration")
 
     def use_uploads(self):
         if not self.uploads():
             raise LookupError("No files have been uploaded yet.")
-        self._activate(self._from_uploads(self._upload_files()), "uploaded")
+        self._activate(self._build("uploaded"), "uploaded")
 
     def remove_upload(self, name: str):
         path = self.uploads_dir / Path(name).name
         if not path.is_file():
             raise LookupError(f"No uploaded file named {name}.")
+        if path.suffix.lower() in READERS:
+            for t in read_file(path):
+                self.fix_store("uploaded").restore_original(t)
         path.unlink()
         if self.workspace_label == "uploaded":
             self.use_uploads() if self.uploads() else self.use_demo()
 
+    # ---------------------------------------------------------------- data fixes
+    def fixes(self) -> dict:
+        return {"workspace": self.workspace_label, "options": [as_dict(o) for o in propose(self.catalog)],
+                "log": self.fix_store().log()}
+
+    def preview_fix(self, fix_id: str, choice, value) -> dict:
+        cat = self.catalog
+        opt = option_by_id(cat, fix_id)
+        before = cat.tables[opt.table]
+        after = transform(cat, opt, choice, value)
+        return {"option": as_dict(opt), "choice": choice, "value": value, "token": fingerprint(before),
+                **diff(cat, opt.table, before, after)}
+
+    def apply_fix(self, fix_id: str, choice, value, token: str) -> dict:
+        cat = self.catalog
+        opt = option_by_id(cat, fix_id)
+        before = cat.tables[opt.table]
+        if token != fingerprint(before):
+            raise FixError("The table changed since this preview. Preview the change again before applying it.")
+        after = transform(cat, opt, choice, value)
+        d = diff(cat, opt.table, before, after)
+        if not d["removed"]["count"] and not d["changed"]["count"]:
+            raise FixError("This change would not modify any rows.")
+        entry = self.fix_store().commit(opt.table, before, after, opt, choice, value, d)
+        self._activate(self._build(self.workspace_label), self.workspace_label)
+        return entry
+
+    def rollback_fix(self, entry_id: str) -> dict:
+        entry = self.fix_store().rollback(entry_id)
+        self._activate(self._build(self.workspace_label), self.workspace_label)
+        return entry
+
+    def restore_table(self, table: str) -> int:
+        n = self.fix_store().restore_original(table)
+        self._activate(self._build(self.workspace_label), self.workspace_label)
+        return n
+
+    # ---------------------------------------------------------------- analyses
     def start(self, question: str, claim) -> str:
         cat = self.catalog
         analyst = Analyst(cat, self.cfg)
@@ -214,18 +283,101 @@ class App:
                           "ts": d["stages"][0]["ts"] if d.get("stages") else path.stat().st_mtime})
         return items
 
-    def rerun(self, rid: str) -> dict:
+    def _plan_for(self, rid: str):
+        """The analysis plan and the data it runs on. Analyses from earlier sessions are rebuilt from their
+        saved interpretation against the current workspace; the checks then run exactly as before."""
         run = self.runs.get(rid)
-        st = run.state if run else None
-        if not st or not st.verified:
-            raise LookupError("Re-run is available for verified analyses from the current server session.")
+        if run and run.state and run.state.plan:
+            return run.state.plan, run.catalog, run.state.final
+        snap = self.latest(rid)
+        if not snap or not snap.get("spec"):
+            raise LookupError("This analysis has no saved interpretation to rebuild.")
+        cat = self.catalog
+        spec = QuerySpec(**snap["spec"])
+        a = assess(spec, cat)
+        if not a.answerable:
+            raise LookupError(f"The current data cannot support this analysis: {a.reasons[0]}")
+        return build_plan(snap["question"], spec, a, cat), cat, snap.get("final") or {}
+
+    def verify_code(self, rid: str, code: str | None = None) -> dict:
+        """Execute `code` (default: the analysis's proof) in the sandbox and run every verification check."""
+        plan, cat, final = self._plan_for(rid)
+        code = code if code is not None else final.get("proof_code")
+        if not code:
+            raise LookupError("There is no proof code to run for this analysis.")
         sb = Sandbox(self.cfg)
-        data_dir = run.catalog.workspace.data_dir
-        code = st.final["proof_code"]
-        ex = sb.run(code, data_dir, st.plan.tables)
-        v = verify(st.plan, code, ex, sb, data_dir)
-        same = ex.ok and ex.result == st.final["numeric_value"]
-        return {"execution": ex.__dict__, "verification": v.record(), "matches_shown_result": same}
+        ex = sb.run(code, cat.workspace.data_dir, plan.tables)
+        v = verify(plan, code, ex, sb, cat.workspace.data_dir)
+        shown = final.get("numeric_value")
+        same = bool(ex.ok and shown is not None and normalize(ex.result) == normalize(shown))
+        return {"execution": ex.__dict__, "verification": v.record(), "matches_shown_result": same,
+                "plan": {"steps": plan.steps, "tables": plan.tables}}
+
+    def run_code(self, code: str, tables: list[str]) -> dict:
+        unknown = [t for t in tables if t not in self.catalog.tables]
+        if unknown:
+            raise LookupError(f"Unknown table(s): {', '.join(unknown)}")
+        ex = Sandbox(self.cfg).run(code, self.catalog.workspace.data_dir, tables)
+        return {"execution": ex.__dict__}
+
+    def bundle(self, rid: str) -> bytes:
+        """A zip that runs outside the app: proof, the data it reads, requirements, and launch scripts."""
+        plan, cat, final = self._plan_for(rid)
+        code = final.get("proof_code")
+        if not code:
+            raise LookupError("Only verified analyses have a proof to download.")
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+            z.writestr("proof.py", code)
+            for t in plan.tables:
+                z.write(cat.workspace.data_dir / f"{t}.csv", f"data/{t}.csv")
+            z.writestr("requirements.txt", "pandas>=2.1\n")
+            z.writestr("run_with_analyst_python.bat",
+                       f'@echo off\r\ncd /d "%~dp0"\r\n"{sys.executable}" proof.py\r\npause\r\n')
+            z.writestr("README.txt", (
+                f"Proof for: {final.get('answer', '')}\n\n"
+                "Run it in either way:\n"
+                "  1. Windows: double-click run_with_analyst_python.bat (uses the analyst's own Python, which has\n"
+                "     pandas installed).\n"
+                "  2. Any Python 3.10+:  pip install -r requirements.txt  then  python proof.py\n\n"
+                "Run it from this folder: the proof reads data/<table>.csv relative to the current directory.\n"
+                "Expected output: one line starting with RESULT: and the verified value.\n"))
+        return buf.getvalue()
+
+    # ---------------------------------------------------------------- benchmark (background job with progress)
+    def start_benchmark(self):
+        with self.lock:
+            if self.bench.get("running"):
+                raise LookupError("A benchmark is already running.")
+            cases = json.loads((DEMO / "ground_truth.json").read_text(encoding="utf-8"))
+            self.bench = {"running": True, "total": len(cases), "done": 0, "current": None, "rows": [],
+                          "started_at": time.time(), "error": None, "report": None,
+                          "questions": [c["question"] for c in cases]}
+        cat = self._build("demonstration", with_fixes=False)  # ground truth refers to the original data
+
+        def progress(e):
+            b = self.bench
+            if e["type"] == "case_start":
+                b["current"] = {"index": e["index"], "question": e["question"], "answerable": e["answerable"],
+                                "stage": "interpret", "stages_done": []}
+            elif e["type"] == "stage" and b["current"]:
+                b["current"]["stages_done"].append(e["stage"])
+                b["current"]["stage"] = e["next"] or e["stage"]
+            elif e["type"] == "case_done":
+                b["rows"].append(e["row"])
+                b["done"] = len(b["rows"])
+                b["current"] = None
+
+        def work():
+            try:
+                self.bench["report"] = run_and_save(cat, DEMO / "ground_truth.json", analyst=Analyst(cat, self.cfg),
+                                                    progress=progress)
+            except Exception as e:  # surfaced in the progress view, never silent
+                self.bench["error"] = f"{type(e).__name__}: {e}"
+            finally:
+                self.bench["running"] = False
+                self.bench["finished_at"] = time.time()
+        threading.Thread(target=work, daemon=True).start()
 
 
 # ------------------------------------------------------------------ HTTP layer
@@ -300,6 +452,10 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json(app.history())
             if parts == ["benchmark"]:
                 return self._json(json.loads(RESULTS_FILE.read_text(encoding="utf-8")) if RESULTS_FILE.exists() else None)
+            if parts == ["benchmark", "progress"]:
+                return self._json({k: v for k, v in app.bench.items() if k != "report"})
+            if parts == ["fixes"]:
+                return self._json(app.fixes())
             if len(parts) >= 2 and parts[0] == "analysis":
                 rid = parts[1]
                 if len(parts) == 2:
@@ -312,6 +468,18 @@ class Handler(SimpleHTTPRequestHandler):
                     if not snap:
                         return self._error(HTTPStatus.NOT_FOUND, "Unknown analysis.")
                     return self._json(snap, headers={"Content-Disposition": f'attachment; filename="analysis-{rid}.json"'})
+                if parts[2] == "bundle":
+                    try:
+                        data = app.bundle(rid)
+                    except LookupError as e:
+                        return self._error(HTTPStatus.CONFLICT, str(e))
+                    self.send_response(HTTPStatus.OK)
+                    self.send_header("Content-Type", "application/zip")
+                    self.send_header("Content-Disposition", f'attachment; filename="proof-{rid}.zip"')
+                    self.send_header("Content-Length", str(len(data)))
+                    self.end_headers()
+                    self.wfile.write(data)
+                    return
             return self._error(HTTPStatus.NOT_FOUND, "Unknown endpoint.")
         except (BrokenPipeError, ConnectionResetError):
             pass
@@ -326,7 +494,7 @@ class Handler(SimpleHTTPRequestHandler):
             "workspace": app.workspace_label,
             "tables": len(cat.tables),
             "supported_uploads": sorted(READERS) + ["metrics.json"],
-            "benchmark_available": app.workspace_label == "demonstration" and (DEMO / "ground_truth.json").exists(),
+            "benchmark_available": (DEMO / "ground_truth.json").exists(),
         }
 
     def _datasets(self):
@@ -401,11 +569,39 @@ class Handler(SimpleHTTPRequestHandler):
             claim = body.get("claim")
             claim = str(claim).strip() if claim not in (None, "") else None
             return self._json({"id": app.start(q, claim)}, HTTPStatus.ACCEPTED)
-        if len(parts) == 3 and parts[0] == "analysis" and parts[2] == "rerun":
+        if len(parts) == 3 and parts[0] == "analysis" and parts[2] in ("rerun", "verify"):
+            code = body.get("code")
+            if code is not None and (not isinstance(code, str) or len(code) > 200_000):
+                return self._error(HTTPStatus.BAD_REQUEST, "Code must be text under 200,000 characters.")
             try:
-                return self._json(app.rerun(parts[1]))
+                return self._json(app.verify_code(parts[1], code))
             except LookupError as e:
                 return self._error(HTTPStatus.CONFLICT, str(e))
+        if parts == ["run"]:
+            code, tables = body.get("code"), body.get("tables") or []
+            if not isinstance(code, str) or not code.strip() or len(code) > 200_000:
+                return self._error(HTTPStatus.BAD_REQUEST, "Code is required (under 200,000 characters).")
+            if not isinstance(tables, list) or not all(isinstance(t, str) for t in tables):
+                return self._error(HTTPStatus.BAD_REQUEST, "tables must be a list of table names.")
+            try:
+                return self._json(app.run_code(code, tables))
+            except LookupError as e:
+                return self._error(HTTPStatus.BAD_REQUEST, str(e))
+        if len(parts) == 2 and parts[0] == "fixes":
+            try:
+                if parts[1] == "preview":
+                    return self._json(app.preview_fix(str(body.get("fix_id")), body.get("choice"), body.get("value")))
+                if parts[1] == "apply":
+                    app.apply_fix(str(body.get("fix_id")), body.get("choice"), body.get("value"), str(body.get("token")))
+                elif parts[1] == "rollback":
+                    app.rollback_fix(str(body.get("entry_id")))
+                elif parts[1] == "restore":
+                    app.restore_table(str(body.get("table")))
+                else:
+                    return self._error(HTTPStatus.NOT_FOUND, "Unknown endpoint.")
+            except FixError as e:
+                return self._error(HTTPStatus.CONFLICT, str(e))
+            return self._json({"datasets": self._datasets(), "fixes": app.fixes()})
         if parts == ["workspace"]:
             try:
                 if body.get("demo"):
@@ -426,9 +622,11 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._error(HTTPStatus.BAD_REQUEST, "Each file needs a name and base64 data.")
             return self._json(self._datasets())
         if parts == ["benchmark"]:
-            if app.workspace_label != "demonstration":
-                return self._error(HTTPStatus.CONFLICT, "The benchmark runs on the demonstration data only.")
-            return self._json(run_and_save(app.catalog, DEMO / "ground_truth.json", analyst=Analyst(app.catalog, app.cfg)))
+            try:
+                app.start_benchmark()
+            except LookupError as e:
+                return self._error(HTTPStatus.CONFLICT, str(e))
+            return self._json({"started": True}, HTTPStatus.ACCEPTED)
         return self._error(HTTPStatus.NOT_FOUND, "Unknown endpoint.")
 
     # ---------------------------------------------------------------- DELETE

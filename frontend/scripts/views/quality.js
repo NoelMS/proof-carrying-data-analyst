@@ -1,8 +1,10 @@
 // Data quality: each detected issue explained as evidence, with how the analysis handles it.
+import { api } from "../api.js";
 import { marker } from "../components.js";
 import { h, pad, setTitle } from "../dom.js";
 import { reveal } from "../motion.js";
 import { store } from "../state.js";
+import { changeHistory, fixButton, fixFor } from "./fixes.js";
 
 // Describes behaviour implemented in app/answerability.py and app/traps.py.
 const STORY = {
@@ -37,23 +39,28 @@ const STORY = {
 };
 const STATUS = { handled: "Handled", blocks: "Blocks affected questions", conditional: "Depends on question", surfaced: "Surfaced", info: "Informational" };
 
-export function issueStory(issue) {
+export function issueStory(issue, fixes) {
   const [name, status, why, action] = STORY[issue.kind] || [issue.kind, "info", "", ""];
+  const fix = fixFor(issue, fixes);
   return h("article", { class: "story" },
     h("div", {},
       h("div", { class: "story__title" }, h("h3", { class: "story__name" }, name)),
       h("p", { class: "story__where" }, issue.column ? `${issue.table}.${issue.column}` : issue.table),
       h("p", { class: "story__detail" }, issue.detail),
-      h("p", { style: { "margin-top": "var(--space-3)" } }, marker(STATUS[status], status))),
+      h("p", { style: { "margin-top": "var(--space-3)" } }, marker(STATUS[status], status)),
+      fix && fixButton(fix)),
     h("dl", { class: "story__explain" },
       why && [h("dt", {}, "Why this matters"), h("dd", {}, why)],
       action && [h("dt", {}, "How the analysis handles it"), h("dd", {}, action)]));
 }
 
-export function renderQuality(main) {
+export async function renderQuality(main) {
   setTitle("Data quality");
   const ds = store.datasets;
   if (!ds) { main.replaceChildren(h("div", { class: "view" }, h("p", { class: "eyebrow" }, "Loading data quality"))); return; }
+  let fixes = null;
+  try { fixes = await api.fixes(); } catch { /* fixes unavailable: issues are still shown */ }
+  if (store.datasets !== ds) return; // a newer render is on its way
   const order = Object.keys(STORY);
   const issues = [...ds.issues].sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind));
   const blocking = issues.filter((i) => STORY[i.kind]?.[1] === "blocks").length;
@@ -62,7 +69,11 @@ export function renderQuality(main) {
       h("p", { class: "eyebrow" }, "Data quality"),
       h("h1", { class: "title", tabindex: "-1" }, `${pad(issues.length)} issues detected.`),
       h("p", { class: "lead" }, issues.length
-        ? `${blocking} can block questions that depend on them. Issues are facts about the data; whether one matters depends on the tables and columns a question uses.`
+        ? `${blocking} can block questions that depend on them. ${fixes?.options.length || 0} can be fixed here: you choose the fix, preview every change, and confirm before anything is applied.`
         : "No issues were detected in the current workspace.")),
-    h("div", { class: "rows" }, issues.map((i, n) => reveal(issueStory(i), Math.min(n, 6))))));
+    h("div", { class: "rows" }, issues.map((i, n) => reveal(issueStory(i, fixes), Math.min(n, 6)))),
+    h("section", { class: "section", id: "changes" },
+      h("div", { class: "section__head" }, h("h2", { class: "eyebrow" }, "Change history"),
+        h("span", { class: "meta" }, `${ds.workspace === "uploaded" ? "Your uploads" : "Demonstration data"} · applied fixes, newest first`)),
+      changeHistory(fixes))));
 }

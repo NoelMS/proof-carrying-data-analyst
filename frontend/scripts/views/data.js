@@ -110,6 +110,7 @@ export async function renderDataset(main, { name, tab = "overview" }) {
   let d;
   try {
     d = await api.dataset(name);
+    d.fixes = await api.fixes().catch(() => null);
   } catch (e) {
     if (e instanceof ConnectionError) { update({ connection: "lost" }); main.replaceChildren(connectionLost(() => location.reload())); }
     else main.replaceChildren(h("div", { class: "view" }, e instanceof ApiError && e.status === 404
@@ -162,7 +163,7 @@ const TAB_RENDER = {
   schema: (d) => table(["column", "type", "null %", "unique", "min", "max", "example"],
     d.columns.map((c) => [c.name, KIND(c), `${c.null_pct}%`, fmtInt(c.unique), c.min, c.max, c.samples[0]]),
     { numeric: ["null %", "unique"], mono: ["min", "max", "example"], clip: ["example", "min", "max"], caption: `Schema of ${d.name}` }),
-  quality: (d) => d.issues.length ? h("div", {}, d.issues.map(issueStory)) : h("p", { class: "meta" }, "No data-quality issues detected in this table."),
+  quality: (d) => d.issues.length ? h("div", {}, d.issues.map((i) => issueStory(i, d.fixes))) : h("p", { class: "meta" }, "No data-quality issues detected in this table."),
   sample: (d) => h("div", {}, h("p", { class: "meta", style: { "margin-bottom": "var(--space-3)" } }, `First ${d.sample.rows.length} of ${fmtInt(d.rows)} rows, as stored.`),
     table(d.sample.columns, d.sample.rows, { clip: d.sample.columns, caption: `Sample rows of ${d.name}` })),
   relationships: (d) => relationships(d.relationships),

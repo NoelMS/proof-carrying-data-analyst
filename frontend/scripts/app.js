@@ -10,6 +10,7 @@ import { renderHistory } from "./views/history.js";
 import { onDatasets, renderHome } from "./views/home.js";
 import { renderQuality } from "./views/quality.js";
 import { renderSystem } from "./views/system.js";
+import { renderWorkbench } from "./views/workbench.js";
 
 const main = document.getElementById("main");
 const sidebar = document.getElementById("sidebar");
@@ -26,6 +27,7 @@ function parse(hash) {
     case "quality": return { route: "quality", nav: "quality" };
     case "history": return { route: "history", nav: "history" };
     case "system": return { route: "system", nav: "system" };
+    case "workbench": return { route: "workbench", nav: "workbench", id: parts[1] };
     default: return { route: "home", nav: "home" };
   }
 }
@@ -38,6 +40,7 @@ const VIEWS = {
   quality: (p) => renderQuality(main, p),
   history: (p) => renderHistory(main, p),
   system: (p) => renderSystem(main, p),
+  workbench: (p) => renderWorkbench(main, p),
 };
 
 function route({ animate = true } = {}) {
@@ -150,7 +153,7 @@ function initTheme() {
 
 /* ---------------------------------------------------------------- boot */
 // views that read the store re-render when the data they show arrives or changes
-const DEPENDS = { data: "datasets", quality: "datasets", system: "status", history: "history" };
+const DEPENDS = { data: "datasets", dataset: "datasets", quality: "datasets", system: "status", history: "history" };
 const seen = { datasets: null, status: null, history: null };
 subscribe((s) => {
   renderStatus(s);

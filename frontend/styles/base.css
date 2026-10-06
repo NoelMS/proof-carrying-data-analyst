@@ -90,3 +90,19 @@ body {
 ::selection { background: var(--color-border-strong); }
 /* headings focused programmatically on navigation (for screen readers) need no ring */
 [tabindex="-1"]:focus, [tabindex="-1"]:focus-visible { outline: none; }
+
+/* scrollbars: thin, rounded, themed. WebKit/Blink use the pseudo-elements; Firefox the standard properties. */
+::-webkit-scrollbar { width: 12px; height: 12px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background-color: var(--color-border-strong); border-radius: 999px;
+  border: 3px solid transparent; background-clip: padding-box; min-height: 40px;
+}
+::-webkit-scrollbar-thumb:hover { background-color: var(--color-muted); }
+::-webkit-scrollbar-thumb:active { background-color: var(--color-secondary); }
+::-webkit-scrollbar-corner { background: transparent; }
+.tech ::-webkit-scrollbar-thumb, .editor ::-webkit-scrollbar-thumb { background-color: #3d3d39; }
+.tech ::-webkit-scrollbar-thumb:hover, .editor ::-webkit-scrollbar-thumb:hover { background-color: #5c5c56; }
+@supports not selector(::-webkit-scrollbar) {
+  * { scrollbar-width: thin; scrollbar-color: var(--color-border-strong) transparent; }
+}

@@ -40,6 +40,15 @@ export const api = {
   useUploads: () => request("/api/workspace", { method: "POST", body: { uploaded: true } }),
   removeUpload: (name) => request(`/api/uploads/${enc(name)}`, { method: "DELETE" }),
   exportUrl: (id) => `/api/analysis/${enc(id)}/export`,
+  bundleUrl: (id) => `/api/analysis/${enc(id)}/bundle`,
+  verifyCode: (id, code) => request(`/api/analysis/${enc(id)}/verify`, { method: "POST", body: code == null ? {} : { code } }),
+  runCode: (code, tables) => request("/api/run", { method: "POST", body: { code, tables } }),
+  benchmarkProgress: () => request("/api/benchmark/progress"),
+  fixes: () => request("/api/fixes"),
+  previewFix: (fix_id, choice, value) => request("/api/fixes/preview", { method: "POST", body: { fix_id, choice, value } }),
+  applyFix: (fix_id, choice, value, token) => request("/api/fixes/apply", { method: "POST", body: { fix_id, choice, value, token } }),
+  rollbackFix: (entry_id) => request("/api/fixes/rollback", { method: "POST", body: { entry_id } }),
+  restoreTable: (table) => request("/api/fixes/restore", { method: "POST", body: { table } }),
 };
 
 /** Live analysis updates via Server-Sent Events. Returns a function that stops listening. */

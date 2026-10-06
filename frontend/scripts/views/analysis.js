@@ -2,7 +2,7 @@
 // Everything rendered here comes from backend snapshots streamed after each workflow stage.
 import { ApiError, ConnectionError, api, streamAnalysis } from "../api.js";
 import { barChart } from "../charts.js";
-import { announce, codeBlock, connectionLost, copyText, download, facts, marker, openDrawer, table, toast } from "../components.js";
+import { announce, codeBlock, connectionLost, copyText, facts, marker, openDrawer, table, toast } from "../components.js";
 import { arrow, fmtInt, h, label, pad, setTitle } from "../dom.js";
 import { animateNumber, enter, reveal, swap } from "../motion.js";
 import { store, update } from "../state.js";
@@ -307,7 +307,9 @@ function verifiedStage(s, id) {
       "Verified against ", s.datasets.map((d) => `${d.name} (${fmtInt(d.rows)} rows)`).join(", "), "."),
     h("div", { class: "btn-row", style: { "margin-top": "var(--space-6)" } },
       h("a", { class: "btn btn--primary", href: "#proof", onclick: (e) => { e.preventDefault(); openProof(); } }, "View proof ", arrow()),
+      h("a", { class: "btn btn--secondary", href: `#/workbench/${id}` }, "Open in workbench ", arrow()),
       h("button", { class: "btn btn--secondary", type: "button", onclick: () => diagnostics(s) }, "Diagnostics ", arrow()),
+      askAgain(s),
       h("a", { class: "btn btn--secondary", href: api.exportUrl(id), download: `analysis-${id}.json` }, "Export JSON")));
   const shown = isScalar ? f.answer : top?.formatted;
   if (shown) {  // "815,497.70 USD" -> large number, smaller unit
@@ -343,7 +345,25 @@ function refusedStage(s) {
     h("p", { class: "refusal__end" }, "No verified result produced."),
     h("div", { class: "btn-row", style: { "margin-top": "var(--space-6)" } },
       h("a", { class: "btn btn--primary", href: "#/" }, "Ask another question ", arrow()),
+      askAgain(s),
       h("button", { class: "btn btn--secondary", type: "button", onclick: () => diagnostics(s) }, "Diagnostics ", arrow())));
+}
+
+/** Start a fresh analysis of the same question (and claim) against the current data. */
+function askAgain(s) {
+  const btn = h("button", { class: "btn btn--secondary", type: "button" }, "Run again as new analysis");
+  btn.addEventListener("click", async () => {
+    btn.disabled = true;
+    try {
+      const { id } = await api.analyze(s.question, s.claimed_value ?? null);
+      update({ pending: { id, question: s.question } });
+      location.hash = `#/analysis/${id}`;
+    } catch (e) {
+      btn.disabled = false;
+      toast(e instanceof ConnectionError ? "Connection lost" : e.message, "error");
+    }
+  });
+  return btn;
 }
 
 /* ---------------------------------------------------------------- below the split: evidence, execution, proof */
@@ -371,7 +391,7 @@ function renderAfter(host, s, id) {
     rerunBtn.disabled = true;
     rerunBtn.textContent = "Executing…";
     try {
-      const r = await api.rerun(id);
+      const r = await api.verifyCode(id);
       const ok = r.verification.status === "verified" && r.matches_shown_result;
       rerunBtn.textContent = ok ? "Verified" : "Failed";
       setExecFacts(r.execution, ["Re-run", ok ? "Verified, identical result" : `Failed: ${r.verification.checks.filter((c) => !c.passed).map((c) => c.name).join(", ")}`]);
@@ -379,7 +399,8 @@ function renderAfter(host, s, id) {
       toast(ok ? "Re-run verified" : "Re-run failed verification", ok ? "info" : "error");
     } catch (e) {
       rerunBtn.textContent = "Unavailable";
-      toast(e instanceof ConnectionError ? "Connection lost" : e.message, "error");
+      setExecFacts(ex, ["Re-run", e instanceof ConnectionError ? "Connection lost" : e.message]);
+      toast(e instanceof ConnectionError ? "Connection lost" : "Re-run not possible", "error");
     }
     setTimeout(() => { rerunBtn.disabled = false; rerunBtn.replaceChildren("Re-run ", arrow()); }, 2400);
   });
@@ -390,7 +411,8 @@ function renderAfter(host, s, id) {
     if (ok) toast("Proof copied");
     setTimeout(() => { copyBtn.textContent = "Copy"; }, 1600);
   });
-  const dlBtn = h("button", { class: "btn btn--tech", type: "button", onclick: () => download(`proof-${id}.py`, f.proof_code, "text/x-python") }, "Download");
+  const dlBtn = h("a", { class: "btn btn--tech", href: api.bundleUrl(id), title: "proof.py with its data, requirements and a run script" }, "Download bundle");
+  const wbBtn = h("a", { class: "btn btn--tech", href: `#/workbench/${id}` }, "Open in workbench ", arrow());
   const lines = f.proof_code.trimEnd().split("\n").length;
 
   host.append(
@@ -413,7 +435,7 @@ function renderAfter(host, s, id) {
         h("summary", {}, h("span", {}, "Executable proof ", h("span", { class: "meta", style: { "letter-spacing": "0", "text-transform": "none", "font-weight": "400" } }, `Python · ${lines} lines`)),
           h("span", { class: "row__go" }, h("span", { class: "row__go-label" }, "View code"), arrow())),
         h("div", { class: "tech" },
-          h("div", { class: "tech__head" }, h("p", { class: "eyebrow" }, "proof.py"), h("div", { class: "btn-row" }, copyBtn, dlBtn, rerunBtn)),
+          h("div", { class: "tech__head" }, h("p", { class: "eyebrow" }, "proof.py"), h("div", { class: "btn-row" }, copyBtn, dlBtn, wbBtn, rerunBtn)),
           codeBlock(f.proof_code))))));
 }
 
