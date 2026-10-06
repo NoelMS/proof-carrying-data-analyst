@@ -61,11 +61,41 @@ python scripts/make_synthetic.py                             # regenerate demons
 ## Running
 
 ```bash
-streamlit run streamlit_app.py                                   # web interface
+python server.py                                                 # web interface on http://127.0.0.1:8600
 python scripts/cli.py ask "What is the revenue in USD by region?"
 python scripts/cli.py ask "What is the total amount?" --claim 1000 --data path/to/folder
 python scripts/cli.py benchmark                                  # writes benchmark_results.json
 ```
+
+Run these with the Python that has the requirements installed. If you use the project's virtual environment, activate it first (`.venv\Scripts\activate` on Windows), or call `.venv\Scripts\python server.py` directly.
+
+## Web interface
+
+`frontend/` is plain HTML, CSS and ES-module JavaScript, with no framework and no build step. `server.py` serves it and the API (`app/api.py`, standard library only). The server binds to `127.0.0.1` and accepts only JSON POST bodies.
+
+| View | What it shows |
+|---|---|
+| Analysis | Question input (Ctrl/⌘ + Enter to submit, `/` to focus), the available data, and example questions |
+| Analysis / result | Split view. The left side holds the stable record: question, stage timeline, data used, data checks, plan and verification checks. The right side moves from analyzing to executing, verifying, and then the verified result or a refusal. Below sit the evidence, execution output and the executable proof (copy, download, re-run). |
+| Data | Table inventory, relationships, metric definitions and file upload. Each table has an inspector with overview, schema, quality, sample rows and relationships. |
+| Quality | Every detected issue: why it matters and how the analysis handles it |
+| History | Past analyses grouped by day, each reopening its result and proof |
+| System | Live configuration, sandbox health check, security controls, verification checks, and the benchmark (run on demand) |
+
+Progress comes from the backend. Each workflow stage pushes a state snapshot over Server-Sent Events, and the interface renders only those snapshots. There are no simulated percentages, and a "Verified" label appears only when the backend's verification passed. Motion is limited to CSS transitions and the View Transitions API. All of it is disabled under `prefers-reduced-motion`, and the interface is fully usable by keyboard.
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/status` | Configuration and sandbox health |
+| `GET /api/datasets`, `GET /api/datasets/<table>` | Inventory, profiles, sample rows, relationships, issues |
+| `POST /api/workspace` | Upload files (`{"files": [{"name", "data_base64"}]}`) or `{"demo": true}` |
+| `POST /api/analyze` | Start an analysis (`{"question", "claim"?}`) and return its `id` |
+| `GET /api/analysis/<id>` and `/events` | Latest state, or a live SSE stream of states |
+| `POST /api/analysis/<id>/rerun` | Re-execute and re-verify the shown proof |
+| `GET /api/analysis/<id>/export` | The analysis as JSON (question, answer, verification, proof, output, diagnostics) |
+| `GET /api/history`, `GET`/`POST /api/benchmark`, `GET /api/examples` | History, benchmark, demonstration questions |
+
+![Refusal](docs/img/refusal.png)
 
 Structured logs (request ID, stage, attempt, status, duration, refusal reason; no data values) are appended to `logs/pcda.jsonl`.
 
@@ -165,14 +195,14 @@ Exact duplicate rows (identical in every field, including the record ID) are cou
 python -m pytest -q
 ```
 
-The suite (96 tests) covers:
+The suite (101 tests) covers:
 - ingestion: malformed, empty or corrupted files, encodings, hostile column names
 - profiling and trap detection
 - sandbox isolation: environment secrets, subprocess, file reads and writes, network, ctypes, timeout, memory
 - execution-failure classification
 - every verification failure mode, including claim 1000 vs executed 1250
 - every demonstration question against independently computed ground truth, with standalone re-execution of each proof
-- repair, bounded retries, refusals on custom trap datasets, prompt injection, model-written hostile code (with a stand-in client), and a headless UI test
+- repair, bounded retries, refusals on custom trap datasets, prompt injection, model-written hostile code (with a stand-in client), and the HTTP API against a live server (streaming, re-run, upload, export, input validation)
 
 Docker tests run when the `pcda-sandbox:latest` image exists and are skipped otherwise.
 

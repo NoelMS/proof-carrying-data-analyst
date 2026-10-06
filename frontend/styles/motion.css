@@ -1,0 +1,75 @@
+/* Motion layer. Everything here is optional: content is complete without it. */
+
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+@keyframes activity { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+@keyframes step-active { from { transform: scaleX(0.2); } to { transform: scaleX(0.7); } }
+
+/* masked reveal: content rises out of a clip */
+.reveal { clip-path: inset(0 0 100% 0); transform: translateY(14px); opacity: 0; }
+.reveal.is-in {
+  clip-path: inset(0 0 0 0); transform: none; opacity: 1;
+  transition: clip-path var(--duration-slow) var(--ease-out), transform var(--duration-slow) var(--ease-out),
+              opacity var(--duration-normal) var(--ease-out);
+  transition-delay: calc(var(--i, 0) * 60ms);
+}
+
+/* stage surface swap (right side of the analysis split) */
+.stage.is-entering { opacity: 0; transform: translateY(18px); clip-path: inset(0 0 12% 0); }
+.stage.is-entered {
+  opacity: 1; transform: none; clip-path: inset(0 0 0 0);
+  transition: opacity var(--duration-normal) var(--ease-out), transform var(--duration-slow) var(--ease-out),
+              clip-path var(--duration-slow) var(--ease-out);
+}
+.stage.is-leaving { opacity: 0; transform: translateY(-10px); transition: opacity 200ms var(--ease-in-out), transform 200ms var(--ease-in-out); }
+
+/* verification line resolves, then the verdict appears */
+.result__statement { position: relative; border-top-color: transparent; }
+.result__statement::before {
+  content: ""; position: absolute; top: -1px; left: 0; right: 0; height: 1px; background: var(--color-text);
+  transform: scaleX(0); transform-origin: 0 50%;
+}
+.result.is-in .result__statement::before { transform: scaleX(1); transition: transform var(--duration-slow) var(--ease-out) 250ms; }
+.result .verdict, .result .result__evidence-line { opacity: 0; }
+.result.is-in .verdict, .result.is-in .result__evidence-line { opacity: 1; transition: opacity var(--duration-normal) var(--ease-out) 650ms; }
+
+/* bars grow from the baseline, once */
+.chart__bar { transform-box: fill-box; transform-origin: 0 50%; transform: scaleX(0); }
+.chart--columns .chart__bar { transform-origin: 50% 100%; transform: scaleY(0); }
+.chart.is-in .chart__bar { transform: none; transition: transform var(--duration-slow) var(--ease-out); transition-delay: calc(var(--i, 0) * 45ms); }
+.chart__value { opacity: 0; }
+.chart.is-in .chart__value { opacity: 1; transition: opacity var(--duration-normal) var(--ease-out) 450ms; }
+
+/* drawer */
+.drawer .drawer__panel { transform: translateX(100%); transition: transform var(--duration-normal) var(--ease-out); }
+.drawer .drawer__backdrop { opacity: 0; transition: opacity var(--duration-normal) var(--ease-out); }
+.drawer.is-open .drawer__panel { transform: none; }
+.drawer.is-open .drawer__backdrop { opacity: 1; }
+
+/* toast */
+.toast { animation: toast-in var(--duration-normal) var(--ease-out); }
+@keyframes toast-in { from { opacity: 0; transform: translateY(8px); } }
+
+/* intro: name, then line, then the app */
+.intro__name, .intro__line { animation: intro-rise 520ms var(--ease-out) both; }
+.intro__line { animation-delay: 220ms; }
+.intro.is-leaving { opacity: 0; transition: opacity 260ms var(--ease-in-out); }
+@keyframes intro-rise { from { opacity: 0; transform: translateY(12px); clip-path: inset(0 0 100% 0); } to { clip-path: inset(0 0 0 0); } }
+
+/* view transitions between routes */
+::view-transition-old(main-view) { animation: vt-out 220ms var(--ease-in-out) both; }
+::view-transition-new(main-view) { animation: vt-in 480ms var(--ease-out) both; }
+@keyframes vt-out { to { opacity: 0; transform: translateY(-8px); } }
+@keyframes vt-in { from { opacity: 0; transform: translateY(14px); } }
+.main { view-transition-name: main-view; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 1ms !important; animation-iteration-count: 1 !important; transition-duration: 1ms !important; transition-delay: 0ms !important; }
+  .reveal, .stage.is-entering, .chart__bar, .chart--columns .chart__bar { clip-path: none; transform: none; opacity: 1; }
+  .result .verdict, .result .result__evidence-line, .chart__value { opacity: 1; }
+  .result__statement::before { transform: none; }
+  .activity-line::after { animation: none; width: 100%; opacity: 0.4; }
+  .timeline__step[data-state="active"]::after { animation: none; }
+  .status[data-state="busy"] .status__dot, .marker--active::before { animation: none; }
+  a.row:hover, .examples button:hover, .sidebar__item:hover { transform: none; }
+  ::view-transition-old(main-view), ::view-transition-new(main-view) { animation: none; }
+}

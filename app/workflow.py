@@ -76,10 +76,12 @@ def setup_logging(path: Path = Path("logs/pcda.jsonl")):
         log.setLevel(logging.INFO)
 
 
-def _event(st: AnalysisState, stage: str, **fields):
+def _event(st: AnalysisState, stage: str, on_event=None, **fields):
     rec = {"ts": round(time.time(), 3), "request_id": st.request_id, "stage": stage, **fields}
     st.stages.append(rec)
     log.info(json.dumps(rec, default=str))
+    if on_event:
+        on_event(st)
 
 
 def format_value(plan: Plan, v: Any) -> str:
@@ -99,8 +101,11 @@ class Analyst:
         self.code_writer = code_writer or self._default_writer
 
     # ------------------------------------------------------------------ driver
-    def run(self, question: str, claimed_value: Any = None) -> AnalysisState:
+    def run(self, question: str, claimed_value: Any = None, on_event: Callable[[AnalysisState], None] | None = None,
+            request_id: str | None = None) -> AnalysisState:
+        """Run the workflow. `on_event` is called with the state after every stage (for live progress)."""
         st = AnalysisState(question=question.strip(), claimed_value=claimed_value)
+        st.request_id = request_id or st.request_id
         stage = "interpret"
         while stage != "done":
             t0 = time.monotonic()
@@ -110,10 +115,10 @@ class Analyst:
                 log.exception("stage failure")
                 st.final = self._refusal(st, f"Internal error during {stage}: {type(e).__name__}.", [])
                 nxt = "done"
-            _event(st, stage, next=nxt, duration_s=round(time.monotonic() - t0, 3),
+            _event(st, stage, on_event, next=nxt, duration_s=round(time.monotonic() - t0, 3),
                    attempt=len(st.attempts) or None)
             stage = nxt
-        _event(st, "complete", status=st.final["status"], repairs=max(len(st.attempts) - 1, 0),
+        _event(st, "complete", on_event, status=st.final["status"], repairs=max(len(st.attempts) - 1, 0),
                refusal_reason=st.final.get("reason"), datasets=st.datasets)
         return st
 

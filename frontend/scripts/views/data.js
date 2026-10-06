@@ -1,0 +1,138 @@
+// Datasets: inventory, upload, and a focused inspector per table.
+import { ApiError, ConnectionError, api, filesToPayload } from "../api.js";
+import { connectionLost, errorNotice, facts, marker, table, toast } from "../components.js";
+import { arrow, fmtInt, h, pad, setTitle } from "../dom.js";
+import { reveal } from "../motion.js";
+import { store, update } from "../state.js";
+import { issueStory } from "./quality.js";
+
+export function renderDataList(main) {
+  setTitle("Data");
+  const ds = store.datasets;
+  if (!ds) { main.replaceChildren(h("div", { class: "view" }, h("p", { class: "eyebrow" }, "Loading datasets"))); return; }
+  const fileInput = h("input", { type: "file", multiple: true, accept: ".csv,.xlsx,.xlsm,.json", class: "sr-only", id: "upload" });
+  const status = h("p", { class: "meta", "aria-live": "polite" });
+  fileInput.addEventListener("change", async () => {
+    if (!fileInput.files.length) return;
+    status.textContent = `Loading ${fileInput.files.length} file(s) and profiling…`;
+    try {
+      const datasets = await api.upload(await filesToPayload(fileInput.files));
+      update({ datasets, status: await api.status() });
+      toast("Data loaded");
+      renderDataList(main);
+    } catch (e) {
+      status.textContent = e instanceof ConnectionError ? "Connection lost." : e.message;
+      if (e instanceof ConnectionError) update({ connection: "lost" });
+    }
+    fileInput.value = "";
+  });
+  const useDemo = async () => {
+    status.textContent = "Loading demonstration data…";
+    try {
+      const datasets = await api.useDemo();
+      update({ datasets, status: await api.status() });
+      renderDataList(main);
+    } catch (e) { status.textContent = e.message; }
+  };
+
+  main.replaceChildren(h("div", { class: "view" },
+    h("header", { class: "view__head" },
+      h("p", { class: "eyebrow" }, `Datasets · ${ds.workspace} workspace`),
+      h("h1", { class: "title", tabindex: "-1" }, `${pad(ds.totals.tables)} tables, ${fmtInt(ds.totals.records)} records.`),
+      h("div", { class: "btn-row", style: { "margin-top": "var(--space-6)" } },
+        h("label", { class: "btn btn--secondary", for: "upload", tabindex: "0",
+          onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileInput.click(); } } }, "Add files ", arrow()),
+        fileInput,
+        ds.workspace !== "demonstration" && h("button", { class: "btn btn--text", type: "button", onclick: useDemo }, "Use demonstration data"),
+        h("span", { class: "meta" }, `CSV, Excel (.xlsx, .xlsm) and an optional metrics.json. Uploading replaces the current workspace.`)),
+      status),
+    h("div", { class: "rows" }, ds.tables.map((t, i) => reveal(
+      h("a", { class: "row", href: `#/data/${encodeURIComponent(t.name)}` },
+        h("span", { class: "row__index" }, pad(i + 1)),
+        h("span", { class: "row__title" }, t.name, h("span", { class: "row__sub" }, t.key ? `key ${t.key}` : "no key detected")),
+        h("span", { class: "row__meta num" }, `${fmtInt(t.rows)} rows · ${t.columns} cols`,
+          t.issues ? h("span", { class: "row__sub" }, `${t.issues} issue${t.issues > 1 ? "s" : ""}`) : null),
+        h("span", { class: "row__go" }, h("span", { class: "row__go-label" }, "Inspect"), arrow())), i))),
+    h("section", { class: "section" },
+      h("div", { class: "section__head" }, h("h2", { class: "eyebrow" }, "Relationships"), h("span", { class: "meta" }, "Detected from key columns")),
+      relationships(ds.relationships)),
+    ds.metrics && Object.keys(ds.metrics).length > 0 && h("section", { class: "section" },
+      h("div", { class: "section__head" }, h("h2", { class: "eyebrow" }, "Metric definitions"), h("span", { class: "meta" }, "From metrics.json")),
+      table(["metric", "table", "definition"], Object.entries(ds.metrics).map(([k, d]) => [k, d.table, d.description || (d.column ? `${d.aggregation || "sum"} of ${d.column}` : "rate")])))));
+}
+
+export function relationships(rels) {
+  if (!rels.length) return h("p", { class: "meta" }, "No relationships detected.");
+  return h("ul", { class: "relations" }, rels.map((r) => h("li", {},
+    h("a", { class: "link", href: `#/data/${encodeURIComponent(r.parent)}` }, r.parent),
+    h("span", { class: "rel-line" }, "──", h("span", { class: "rel-col" }, r.column), "──→"),
+    h("a", { class: "link", href: `#/data/${encodeURIComponent(r.child)}` }, r.child),
+    r.unmatched ? marker(`${r.unmatched} unmatched`, "fail") : marker("All matched", "pass"))));
+}
+
+const TABS = ["overview", "schema", "quality", "sample", "relationships"];
+
+export async function renderDataset(main, { name, tab = "overview" }) {
+  setTitle(`Dataset ${name}`);
+  main.replaceChildren(h("div", { class: "view" }, h("p", { class: "eyebrow" }, `Dataset / ${name}`)));
+  let d;
+  try {
+    d = await api.dataset(name);
+  } catch (e) {
+    if (e instanceof ConnectionError) { update({ connection: "lost" }); main.replaceChildren(connectionLost(() => location.reload())); }
+    else main.replaceChildren(h("div", { class: "view" }, e instanceof ApiError && e.status === 404
+      ? errorNotice(new Error(`There is no table named “${name}” in the current workspace.`))
+      : errorNotice(e, () => renderDataset(main, { name, tab }))));
+    return;
+  }
+  const panel = h("div", { role: "tabpanel", id: "dataset-panel", tabindex: "0" });
+  const tabs = h("div", { class: "tabs", role: "tablist", "aria-label": "Dataset views" });
+  const select = (t, focus) => {
+    tabs.querySelectorAll("[role=tab]").forEach((b) => {
+      const on = b.dataset.tab === t;
+      b.setAttribute("aria-selected", on);
+      b.tabIndex = on ? 0 : -1;
+      if (on && focus) b.focus();
+    });
+    panel.setAttribute("aria-labelledby", `tab-${t}`);
+    panel.replaceChildren(reveal(TAB_RENDER[t](d)));
+    history.replaceState(null, "", `#/data/${encodeURIComponent(name)}/${t}`);
+  };
+  TABS.forEach((t) => tabs.append(h("button", { class: "tab", role: "tab", id: `tab-${t}`, "data-tab": t, "aria-controls": "dataset-panel",
+    type: "button", onclick: () => select(t) }, t)));
+  tabs.addEventListener("keydown", (e) => {
+    const i = TABS.indexOf(tabs.querySelector("[aria-selected=true]").dataset.tab);
+    if (e.key === "ArrowRight") select(TABS[(i + 1) % TABS.length], true);
+    if (e.key === "ArrowLeft") select(TABS[(i - 1 + TABS.length) % TABS.length], true);
+  });
+
+  main.replaceChildren(h("div", { class: "view" },
+    h("header", { class: "view__head" },
+      h("p", { class: "eyebrow" }, h("a", { class: "link", href: "#/data" }, "Dataset"), " / ", d.name),
+      h("h1", { class: "title", tabindex: "-1" }, d.name),
+      h("p", { class: "lead num" }, `${fmtInt(d.rows)} rows · ${d.columns.length} columns · ${d.key ? `key ${d.key}` : "no key detected"}`)),
+    tabs, panel));
+  select(TABS.includes(tab) ? tab : "overview");
+}
+
+const KIND = (c) => c.kind === "decimal" ? `decimal (${c.decimals} dp)`
+  : c.date_format ? `${c.kind} (${c.date_format})` : c.kind === "text" && Object.keys(c.top_values).length ? "category" : c.kind;
+
+const TAB_RENDER = {
+  overview: (d) => h("div", {},
+    facts([
+      ["Rows", fmtInt(d.rows)], ["Columns", String(d.columns.length)], ["Key", d.key || "none detected"],
+      ["Exact duplicate rows", fmtInt(d.exact_duplicate_rows)],
+      ["Conflicting keys", d.duplicate_keys.length ? `${d.duplicate_keys.length} (${d.duplicate_keys.slice(0, 5).join(", ")})` : "0"],
+      ["Columns with missing values", String(d.columns.filter((c) => c.nulls).length)],
+      ["Data issues", String(d.issues.length)],
+    ])),
+  schema: (d) => table(["column", "type", "null %", "unique", "min", "max", "example"],
+    d.columns.map((c) => [c.name, KIND(c), `${c.null_pct}%`, fmtInt(c.unique), c.min, c.max, c.samples[0]]),
+    { numeric: ["null %", "unique"], mono: ["min", "max", "example"], clip: ["example", "min", "max"], caption: `Schema of ${d.name}` }),
+  quality: (d) => d.issues.length ? h("div", {}, d.issues.map(issueStory)) : h("p", { class: "meta" }, "No data-quality issues detected in this table."),
+  sample: (d) => h("div", {}, h("p", { class: "meta", style: { "margin-bottom": "var(--space-3)" } }, `First ${d.sample.rows.length} of ${fmtInt(d.rows)} rows, as stored.`),
+    table(d.sample.columns, d.sample.rows, { clip: d.sample.columns, caption: `Sample rows of ${d.name}` })),
+  relationships: (d) => relationships(d.relationships),
+};
+

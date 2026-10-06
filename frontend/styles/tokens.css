@@ -1,0 +1,59 @@
+:root {
+  /* colour: neutral editorial surfaces, one analytical accent */
+  --color-bg: #f5f4f0;
+  --color-text: #111111;
+  --color-secondary: #5f5f5a;
+  --color-muted: #777671;
+  --color-surface: #ecebe6;
+  --color-elevated: #faf9f6;
+  --color-border: #d8d7d1;
+  --color-border-strong: #b5b4ad;
+  --color-accent: #2747d9;
+  --color-accent-soft: #e5e9fb;
+  --color-fail: #9a3b1b;
+  --color-fail-soft: #f4e8e1;
+  --color-caution: #7c5d0b;
+
+  /* technical surfaces: code, execution output, logs */
+  --color-tech: #171717;
+  --color-tech-raised: #202020;
+  --color-tech-text: #e7e6e1;
+  --color-tech-muted: #8f8e88;
+  --color-tech-border: #2e2e2c;
+  --color-tech-accent: #9fb2ff;
+
+  --font-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+
+  --text-eyebrow: 11px;
+  --text-meta: 12.5px;
+  --text-body: 16px;
+  --text-lead: 18px;
+  --text-section: clamp(22px, 2.2vw, 30px);
+  --text-title: clamp(36px, 4.6vw, 58px);
+  --text-result: clamp(48px, 7.2vw, 88px);
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+  --space-9: 96px;
+
+  --radius-sm: 2px;
+  --radius-md: 4px;
+
+  --duration-fast: 180ms;
+  --duration-normal: 420ms;
+  --duration-slow: 700ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
+  --header-h: 68px;
+  --header-h-condensed: 52px;
+  --sidebar-w: 232px;
+  --measure: 62ch;
+}

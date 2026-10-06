@@ -2,7 +2,7 @@
 
 ## Current implementation status
 Working end to end: ingestion -> profiling -> trap detection -> interpretation -> answerability -> plan ->
-code generation -> sandbox execution -> independent verification -> repair/refusal -> Streamlit UI / CLI.
+code generation -> sandbox execution -> independent verification -> repair/refusal -> web interface (`frontend/`, served by `server.py`) / CLI.
 
 ## Completed tasks
 - T-01 Repository created; architecture is an explicit state machine (`app/workflow.py`). LangGraph was not added, since the explicit loop covers the need.
@@ -13,19 +13,21 @@ code generation -> sandbox execution -> independent verification -> repair/refus
 - T-06 Sandbox: subprocess provider (isolated interpreter, empty env, audit hook, job object/rlimits) and Docker provider.
 - T-07 Verification (`app/verification.py`): 9 checks, plus a claim check when a claimed value is supplied.
 - T-08 Bounded repair loop and refusals with specific reasons.
-- T-09 Streamlit UI (`streamlit_app.py`) and CLI (`scripts/cli.py`).
+- T-09 Web interface: vanilla HTML/CSS/JS in `frontend/`, stdlib HTTP + SSE API in `app/api.py`; CLI in `scripts/cli.py`. Streamlit was removed.
 - T-10 Synthetic data + ground truth, pytest suite, benchmark, README, security hardening.
 
 ## Current task
 None in progress.
 
 ## Known issues
+- Browser checks (Edge via Playwright: desktop, mobile, reduced motion, keyboard) were run by hand and are not part of pytest, to keep Playwright out of the dependencies.
+- No custom cursor was built; it was optional and would add nothing to the analysis.
 - Claude mode has not been exercised against the live API: no API key was available during development. It is covered by tests with a stand-in client, and SDK call shapes were checked against anthropic 1.11.0 signatures.
 - The Windows job object is assigned just after process start (a few ms window). The Docker provider has no such window.
 - The deterministic parser's grammar is limited (see README > Configuration).
 
 ## Tests executed
-`python -m pytest -q`: all pass on Windows 11, Python 3.13. Docker tests ran with Docker Desktop and `pcda-sandbox:latest`.
+`python -m pytest -q`: all 101 pass on Windows 11 with Python 3.13, in both the project venv (pandas 3.0) and the user's global Python 3.13 (pandas 2.3). Docker tests ran with Docker Desktop and `pcda-sandbox:latest`.
 `python scripts/cli.py benchmark`: 19 questions, all metrics 1.0, confident-wrong rate 0.0.
 
 ## Tests failing

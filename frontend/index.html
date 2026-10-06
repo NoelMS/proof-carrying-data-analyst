@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Proof-Carrying Data Analyst</title>
+  <meta name="description" content="Analytical answers over multi-table data, each backed by executable, independently verified proof.">
+  <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="/styles/tokens.css">
+  <link rel="stylesheet" href="/styles/base.css">
+  <link rel="stylesheet" href="/styles/layout.css">
+  <link rel="stylesheet" href="/styles/components.css">
+  <link rel="stylesheet" href="/styles/motion.css">
+  <link rel="stylesheet" href="/styles/responsive.css">
+  <script type="module" src="/scripts/app.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <div class="intro" id="intro" hidden aria-hidden="true">
+    <p class="intro__name">Proof-Carrying<br>Data Analyst</p>
+    <p class="intro__line">Verify every number.</p>
+  </div>
+
+  <header class="header" id="header">
+    <div class="header__progress" id="scroll-progress" aria-hidden="true"></div>
+    <a class="wordmark" href="#/" aria-label="Proof-Carrying Data Analyst, new question">
+      <span>Proof-Carrying</span><span>Data Analyst</span>
+    </a>
+    <nav class="nav" aria-label="Primary">
+      <a class="nav__link" href="#/" data-route="home">Analysis</a>
+      <a class="nav__link" href="#/data" data-route="data">Data</a>
+      <a class="nav__link" href="#/quality" data-route="quality">Quality</a>
+      <a class="nav__link" href="#/history" data-route="history">History</a>
+      <a class="nav__link" href="#/system" data-route="system">System</a>
+    </nav>
+    <a class="status" id="status" href="#/system" aria-label="System status">
+      <span class="status__dot" aria-hidden="true"></span><span class="status__text">Connecting</span>
+    </a>
+  </header>
+
+  <div class="shell">
+    <aside class="sidebar" id="sidebar" aria-label="Workspace"></aside>
+    <main class="main" id="main" tabindex="-1"></main>
+  </div>
+
+  <footer class="footer">
+    <div>
+      <p class="footer__name">Proof-Carrying Data Analyst</p>
+      <p class="meta">Executable evidence for analytical answers.</p>
+    </div>
+    <nav class="footer__links" aria-label="Footer">
+      <a class="link" href="#/system">System status</a>
+      <a class="link" href="#/system">Sandbox</a>
+      <a class="link" href="#/system">Verification</a>
+      <a class="link" href="#/quality">Data quality</a>
+    </nav>
+    <p class="meta">© 2026</p>
+  </footer>
+
+  <div class="drawer" id="drawer" hidden>
+    <div class="drawer__backdrop" data-close></div>
+    <section class="drawer__panel" role="dialog" aria-modal="true" aria-labelledby="drawer-title">
+      <header class="drawer__head">
+        <h2 class="eyebrow" id="drawer-title">Diagnostics</h2>
+        <button class="btn btn--text" type="button" data-close>Close <span class="kbd">Esc</span></button>
+      </header>
+      <div class="drawer__body" id="drawer-body"></div>
+    </section>
+  </div>
+
+  <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+  <div class="sr-only" id="announcer" role="status" aria-live="polite"></div>
+</body>
+</html>

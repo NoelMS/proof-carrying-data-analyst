@@ -1,0 +1,46 @@
+@media (max-width: 1100px) {
+  .main { padding: var(--space-7) var(--space-6) var(--space-8); }
+  .split { grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); }
+  .split__right { padding-left: var(--space-6); }
+}
+
+@media (max-width: 960px) {
+  :root { --header-h: 104px; --header-h-condensed: 96px; }
+  .header { grid-template-columns: 1fr auto; grid-template-rows: auto auto; row-gap: var(--space-2); padding: var(--space-3) var(--space-5) 0; height: auto; }
+  .header.is-condensed { height: auto; }
+  .nav { grid-column: 1 / -1; order: 3; overflow-x: auto; gap: var(--space-5); padding-bottom: var(--space-1); }
+  .status { padding-left: 0; }
+  .shell { grid-template-columns: 1fr; }
+  .sidebar { display: none; }
+  .main { padding: var(--space-6) var(--space-5) var(--space-8); }
+  .footer { grid-template-columns: 1fr; padding: var(--space-5); }
+
+  /* the split becomes a natural vertical sequence */
+  .split { grid-template-columns: 1fr; }
+  .split__left { border-right: 0; padding-right: 0; padding-bottom: var(--space-5); }
+  .split__sticky { position: static; }
+  .split__right { padding: var(--space-5) 0 var(--space-6); min-height: 0; border-top: 1px solid var(--color-border); }
+  .two-col { grid-template-columns: 1fr; gap: var(--space-6); }
+  .story { grid-template-columns: 1fr; gap: var(--space-3); }
+}
+
+@media (max-width: 600px) {
+  :root { --text-body: 15px; }
+  .row { grid-template-columns: 32px minmax(0, 1fr) auto; }
+  .row__go { display: none; }
+  .row__meta { font-size: 12px; }
+  .timeline { grid-template-columns: repeat(5, minmax(0, 1fr)); font-size: 10px; }
+  .timeline__step { font-size: 9.5px; letter-spacing: 0.08em; }
+  .command__foot { flex-direction: column; align-items: stretch; }
+  .command__claim input { flex: 1; width: auto; }
+  .btn--primary { justify-content: center; }
+  .figures { gap: var(--space-5); }
+  .relations li { grid-template-columns: 1fr; gap: 2px; }
+  .facts { grid-template-columns: 1fr; row-gap: 0; }
+  .facts dd { margin-bottom: var(--space-3); }
+  .toasts { left: var(--space-4); right: var(--space-4); bottom: var(--space-4); }
+}
+
+@media (hover: none) {
+  .row__go-label { opacity: 1; transform: none; }
+}
