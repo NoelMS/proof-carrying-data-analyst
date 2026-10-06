@@ -221,7 +221,7 @@ Exact duplicate rows (identical in every field, including the record ID) are cou
 python -m pytest -q
 ```
 
-The suite (122 tests) covers:
+The suite (131 tests) covers:
 - ingestion: malformed, empty or corrupted files, encodings, hostile column names
 - profiling and trap detection
 - sandbox isolation: environment secrets, subprocess, file reads and writes, network, ctypes, timeout, memory
@@ -267,7 +267,7 @@ Reason: Amounts are in EUR, GBP, USD. Adding them without conversion is meaningl
 - a misleading pre-aggregated summary table
 - prompt-injection text in a customer note and a product description
 
-`ground_truth.json` lists 19 questions. Their expected answers or expected refusals are computed by the generator from the clean records before the traps are injected.
+`ground_truth.json` lists 28 questions: 11 that must be answered and 17 that must be refused. Expected answers are computed by the generator from the clean records, before the traps are injected. Each refusal case also states the reason it must be refused for (ambiguous, insufficient data, contradictory data, unsupported operation), and the benchmark counts a refusal as correct only when that reason matches.
 
 ## Limitations
 

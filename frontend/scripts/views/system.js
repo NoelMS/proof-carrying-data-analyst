@@ -4,6 +4,7 @@ import { facts, marker, table, toast } from "../components.js";
 import { arrow, h, label, setTitle } from "../dom.js";
 import { reveal } from "../motion.js";
 import { store, update } from "../state.js";
+import { STATE_LABEL } from "./analysis.js";
 
 const CONTROLS = [
   ["Static policy", "Import allowlist; no eval, exec, open, dynamic attribute access, file writers or alternative readers."],
@@ -148,28 +149,44 @@ function benchProgress(p) {
       tally(`${unanswerable.filter((r) => r.correct).length}/${unanswerable.length}`, "correct refusals"),
       tally(String(rows.filter((r) => r.confident_wrong).length), "confident-wrong"),
       tally(String(rows.filter((r) => r.reproduced).length), "proofs reproduced")),
-    benchRows(rows, p.total, c?.index ?? null, p.questions));
+    benchRows(rows, p.total, c?.index ?? null, p.cases));
 }
 
 const tally = (v, l) => h("div", {}, h("p", { class: "tally__v" }, v), h("p", { class: "meta" }, l));
 
-function benchRows(rows, total, currentIndex, questions) {
-  return h("div", { role: "list", style: { "margin-top": "var(--space-4)", "border-top": "1px solid var(--color-text)" } },
-    Array.from({ length: total }, (_, i) => {
-      const r = rows[i];
-      const state = r ? "done" : i === currentIndex ? "running" : "pending";
-      const q = r?.question || questions?.[i] || "";
-      const outcome = !r ? (state === "running" ? marker("Running", "active") : h("span", { class: "meta" }, "Waiting"))
-        : marker(r.status === "verified" ? "Verified" : "Refused", r.status === "verified" ? "pass" : "neutral");
-      const verdict = !r ? "" : r.correct ? marker("Correct", "pass") : marker(r.confident_wrong ? "Confident-wrong" : "Wrong", "fail");
-      return h("div", { class: "bench-row", role: "listitem", "data-state": state },
-        h("span", { class: "row__index" }, String(i + 1).padStart(2, "0")),
-        h("span", {}, q, r && h("span", { class: "detail" },
-          `Expected ${r.answerable ? "answer" : "refusal"}`
-          + (r.answerable ? ` ${JSON.stringify(r.expected)}` : "")
-          + ` · got ${r.status === "verified" ? JSON.stringify(r.got) : `refusal (${r.detail})`}`
-          + ` · ${r.attempts} attempt${r.attempts === 1 ? "" : "s"}`)),
-        outcome, verdict,
-        h("span", { class: "meta num", style: { "text-align": "right" } }, r ? `${r.duration_s.toFixed(2)} s` : ""));
-    }));
+function benchRows(rows, total, currentIndex, cases) {
+  // rows[i] is the result for case i; cases[i] (while running) gives the expectation before it runs
+  const items = Array.from({ length: total }, (_, i) => ({ i, r: rows[i], c: rows[i] || cases?.[i] || {} }));
+  const group = (title, note, list) => list.length > 0 && h("section", { style: { "margin-top": "var(--space-5)" } },
+    h("div", { class: "section__head" }, h("h3", { class: "eyebrow" }, `${title} (${list.length})`), h("span", { class: "meta" }, note)),
+    h("div", { role: "list" }, list.map(({ i, r, c }) => benchRow(i, r, c, currentIndex))));
+  return h("div", {},
+    group("Must be answered", "Correct = verified and equal to the independently computed answer", items.filter((x) => x.c.answerable)),
+    group("Must be refused", "Correct = refused for the expected reason", items.filter((x) => x.c.answerable === false)));
+}
+
+const short = (v) => {
+  const t = typeof v === "string" ? v : JSON.stringify(v);
+  return t.length > 140 ? t.slice(0, 139) + "…" : t;
+};
+const reasonLabel = (code) => STATE_LABEL[code] || (code ? code.toLowerCase().replace(/_/g, " ") : "any reason");
+
+function benchRow(i, r, c, currentIndex) {
+  const state = r ? "done" : i === currentIndex ? "running" : "pending";
+  const outcome = !r ? (state === "running" ? marker("Running", "active") : h("span", { class: "meta" }, "Waiting"))
+    : marker(r.status === "verified" ? "Verified" : "Refused", r.status === "verified" ? "pass" : "neutral");
+  const verdict = !r ? "" : r.correct ? marker("Correct", "pass") : marker(r.confident_wrong ? "Confident-wrong" : "Wrong", "fail");
+  const expected = c.answerable === undefined ? null
+    : c.answerable ? `answer ${short(c.expected)}` : `refusal · ${reasonLabel(c.expected_refusal)}`;
+  const got = !r ? null : r.status === "verified" ? `answer ${short(r.got)}`
+    : `refusal · ${reasonLabel(r.got_refusal)} — ${r.detail}`;
+  return h("div", { class: "bench-row", role: "listitem", "data-state": state },
+    h("span", { class: "row__index" }, String(i + 1).padStart(2, "0")),
+    h("span", {}, c.question || "",
+      expected && h("span", { class: "detail" }, h("strong", {}, "Expected "), expected),
+      got && h("span", { class: "detail" }, h("strong", {}, "Got "), got),
+      r && h("span", { class: "detail" }, r.attempts === 0 ? "Refused before any code ran"
+        : `${r.attempts} attempt${r.attempts === 1 ? "" : "s"}` + (r.reproduced ? " · proof reproduced" : ""))),
+    outcome, verdict,
+    h("span", { class: "meta num", style: { "text-align": "right" } }, r ? `${r.duration_s.toFixed(2)} s` : ""));
 }

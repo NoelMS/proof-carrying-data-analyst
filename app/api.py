@@ -352,7 +352,9 @@ class App:
             cases = json.loads((DEMO / "ground_truth.json").read_text(encoding="utf-8"))
             self.bench = {"running": True, "total": len(cases), "done": 0, "current": None, "rows": [],
                           "started_at": time.time(), "error": None, "report": None,
-                          "questions": [c["question"] for c in cases]}
+                          "questions": [c["question"] for c in cases],
+                          "cases": [{"question": c["question"], "answerable": c["answerable"], "expected": c["expected"],
+                                     "expected_refusal": c.get("expected_refusal")} for c in cases]}
         cat = self._build("demonstration", with_fixes=False)  # ground truth refers to the original data
 
         def progress(e):

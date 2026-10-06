@@ -1,7 +1,8 @@
 """Run labelled questions through the full workflow and measure outcomes.
 
 Labels come from data/synthetic/ground_truth.json, computed by the data generator
-from clean records, independently of the analysis engine.
+from clean records, independently of the analysis engine. A question that must be refused
+counts as correct only when it is refused for the expected reason (answerability state).
 """
 import json
 import time
@@ -42,8 +43,12 @@ def run_benchmark(analyst: Analyst, cases: list[dict], progress=None) -> dict:
             r = analyst.sandbox.run(f["proof_code"], analyst.cat.workspace.data_dir, st.plan.tables)
             repro = bool(r.ok and normalize(r.result) == normalize(f["numeric_value"]))
             reproduced += repro
+        expected_refusal = case.get("expected_refusal")
+        got_refusal = None if verified else f.get("answerability")
+        refused_right = not verified and (expected_refusal is None or got_refusal == expected_refusal)
         row = {"question": case["question"], "answerable": case["answerable"], "status": f["status"],
-               "correct": correct if case["answerable"] else not verified,
+               "correct": correct if case["answerable"] else refused_right,
+               "expected_refusal": expected_refusal, "got_refusal": got_refusal,
                "confident_wrong": verified and not correct,
                "expected": case["expected"], "got": f.get("numeric_value"),
                "attempts": len(st.attempts), "reproduced": repro,

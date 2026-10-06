@@ -7,7 +7,7 @@ import pytest
 
 from app.api import App
 from app.fixes import FixError
-from tests.conftest import CFG
+from tests.conftest import CASES, CFG
 
 
 @pytest.fixture
@@ -116,7 +116,8 @@ def test_benchmark_progress(app):
     while app.bench["running"]:
         seen_current |= bool(app.bench.get("current") and app.bench["current"]["stage"])
         time.sleep(0.05)
-    assert seen_current and app.bench["done"] == app.bench["total"] == 19 and not app.bench["error"]
+    assert seen_current and app.bench["done"] == app.bench["total"] == len(CASES) and not app.bench["error"]
+    assert app.bench["report"]["metrics"]["refusal_accuracy"] == 1.0
     assert app.bench["report"]["metrics"]["confident_wrong_rate"] == 0.0
     assert all("duration_s" in r and "attempts" in r for r in app.bench["rows"])
     json.dumps({k: v for k, v in app.bench.items() if k != "report"})  # serialisable for the API

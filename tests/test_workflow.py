@@ -25,6 +25,7 @@ def test_ground_truth(analyst, case):
         assert r.ok and normalize(r.result) == normalize(case["expected"])
     else:
         assert f["status"] == "refused" and f["answer"] == REFUSAL and f["reason"]
+        assert f["answerability"] == case["expected_refusal"], f["reason"]
         assert f["proof_code"] is None and "numeric_value" not in f
 
 

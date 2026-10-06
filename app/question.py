@@ -86,7 +86,22 @@ def resolve_column(phrase: str, base: str | None, tables: dict, prefer_name=True
     return min(candidates)[1] if candidates else None
 
 
-def _date_column(table: str, profiles: dict[str, TableProfile]) -> str | None:
+def _date_column(table: str, profiles: dict[str, TableProfile], ql: str = "", notes: list | None = None) -> str | None:
+    """The date a question is about. A word naming another date ("shipped" -> ship_date) wins over the
+    base table's own date; answerability then decides whether that table can be joined safely."""
+    words = re.findall(r"[a-z]+", ql)
+    for t, p in profiles.items():
+        for c, cp in p.columns.items():
+            if cp.kind not in ("date", "datetime"):
+                continue
+            stem = re.sub(r"(_?date|_at|_on|_time)$", "", c.lower()).strip("_")
+            if len(stem) < 3 or (t == table and stem == singular(table)):
+                continue
+            word = next((w for w in words if w.startswith(stem) and singular(w) != singular(t)), None)
+            if word:
+                if notes is not None:
+                    notes.append(f"date taken from {t}.{c} (from '{word}')")
+                return f"{t}.{c}"
     cols = [c for c, cp in profiles[table].columns.items() if cp.kind in ("date", "datetime")]
     own = [c for c in cols if c.lower().startswith(singular(table))]
     return f"{table}.{(own or cols)[0]}" if cols else None
@@ -317,7 +332,7 @@ def parse_question(question: str, tables: dict, profiles: dict[str, TableProfile
     elif order_word and not spec.group_by and not spec.time_grain:
         notes.append(f"'{order_word}' ignored: the question names nothing to rank")
     if spec.date_from or spec.time_grain or spec.growth_from:
-        spec.date_column = _date_column(spec.table, profiles)
+        spec.date_column = _date_column(spec.table, profiles, ql, notes)
         if not spec.date_column:
             spec.unresolved.append(f"date for {spec.table}")
     return spec
