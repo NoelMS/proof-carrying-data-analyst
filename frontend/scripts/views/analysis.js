@@ -3,7 +3,7 @@
 import { ApiError, ConnectionError, api, streamAnalysis } from "../api.js";
 import { barChart } from "../charts.js";
 import { announce, codeBlock, connectionLost, copyText, facts, marker, openDrawer, table, toast } from "../components.js";
-import { arrow, fmtInt, h, label, pad, setTitle } from "../dom.js";
+import { append, arrow, fmtInt, h, label, pad, setTitle } from "../dom.js";
 import { animateNumber, enter, reveal, swap } from "../motion.js";
 import { store, update } from "../state.js";
 import { openFixDrawer } from "./fixes.js";
@@ -185,7 +185,8 @@ function renderLeft(s, slots, filled) {
   const once = (name, slot, build) => {
     const content = build();
     if (!content) return;
-    slot.replaceChildren(...[content].flat());
+    slot.replaceChildren();
+    append(slot, content);
     if (!filled.has(name)) { reveal(slot); filled.add(name); }
   };
   once("interp", slots.interp, () => s.spec && [
