@@ -1,0 +1,247 @@
+sale_id,sale_date,customer_id,amount,quantity,region,market,channel,status,discount
+S0114,17/04/2024,K005,"€2,420.09",4,Americas,NA,store,paid,0
+S0227,Jun 23 2024,K011,€501.24,4,americas,NA,store,paid,0
+S0120,2024-05-04,K031,"€2,416.65",6,americas,LATAM,web,paid,N/A
+S0081,2024-06-01,K031,"£2,010.32",1,Asia,North America,store,refunded,10
+S0170,2024-06-25,K006,$725.03,4,Americas,LATAM,store,paid,10
+S0235,2024-02-14,K030,"$1,478.00",5,Asia,EMEA,web,paid,5
+S0228,2024-06-29,K024,"$1,653.13",5,Europe,NA,web,paid,10
+S0108,2024-04-18,K018,"$1,545.57",5,americas,North America,store,refunded,5
+S0022,Mar 25 2024,K023,"£1,941.26",3,americas,NA,web,paid,10
+S0161,2024-04-17,K006,"£2,130.93",4,Americas,LATAM,store,paid,0
+S0096,2024-03-31,K011,$906.71,8,americas,North America,web,paid,5
+S0122,Jun 17 2024,K001,"$2,358.83",8,Asia,EMEA,web,paid,0
+S0169,27/06/2024,K003,"€1,108.34",3,EUROPE ,EMEA,web,paid,0
+S0113,2024-04-06,K015,"$2,349.53",1,Americas,EMEA,web,paid,5
+S0061,2024-06-09,K006,"€2,386.31",6,americas,EMEA,web,paid,5
+S0003,2024-06-16,K018,"€1,086.34",2,Americas,EMEA,store,paid,5
+S0033,2024-03-24,K009,"€1,765.61",4,americas,EMEA,web,paid,5
+S0157,Jan 07 2024,K002,"€2,398.31",5,Americas,LATAM,store,paid,0
+S0072,Jun 02 2024,K019,"$1,341.96",6,Asia,EMEA,web,refunded,0
+S0077,May 07 2024,K023,£578.94,2,Asia,LATAM,web,paid,5
+S0237,Mar 23 2024,K016,$232.34,4,Asia,LATAM,store,paid,0
+S0210,2024-05-21,K030,"€1,855.49",1,Asia,North America,store,paid,5
+S0018,2024-04-17,K010,"£1,307.12",3,Americas,NA,web,refunded,N/A
+S0053,2024-05-17,K030,"$1,372.70",7,americas,LATAM,web,paid,10
+S0154,20/06/2024,K031,"$1,076.90",8,americas,NA,store,paid,N/A
+S0132,Jun 30 2024,K010,€642.53,2,Asia,North America,web,paid,0
+S0123,2024-04-17,K006,"£2,313.31",7,Europe,EMEA,web,paid,10
+S0011,2024-02-23,K028,"$1,053.56",2,Europe,NA,web,paid,10
+S0054,24/01/2024,K003,£457.18,8,Asia,EMEA,store,refunded,5
+S0213,2024-03-17,K022,"€2,156.89",3,Americas,EMEA,store,paid,0
+S0143,2024-05-17,K008,"€1,457.21",6,americas,LATAM,web,paid,0
+S0145,2024-02-04,K019,"$1,272.74",7,americas,EMEA,store,paid,5
+S0131,2024-06-19,K015,"€1,791.72",2,americas,EMEA,web,paid,10
+S0195,2024-02-22,K014,"£1,023.90",2,Europe,LATAM,store,paid,10
+S0215,2024-05-18,K014,"€1,626.45",2,Asia,North America,store,paid,10
+S0109,2024-03-11,K029,£296.31,6,Europe,North America,web,paid,5
+S0153,2024-05-13,K008,$711.16,6,Europe,LATAM,web,refunded,0
+S0240,2024-03-30,K018,"£1,057.92",1,Europe,LATAM,store,paid,10
+S0105,2024-04-03,K019,"£1,057.06",7,Europe,LATAM,store,paid,10
+S0177,Jun 14 2024,K022,€860.96,8,europe,LATAM,store,paid,0
+S0098,2024-02-08,K021,€422.30,6,Asia,LATAM,web,paid,10
+S0013,2024-01-24,K021,"$1,547.60",4,EUROPE ,LATAM,store,paid,10
+S0032,Jun 05 2024,K006,"$1,378.94",6,americas,EMEA,store,paid,5
+S0107,Jan 06 2024,K002,"$1,371.72",3,americas,EMEA,web,paid,0
+S0023,2024-04-01,K031,£837.37,1,Europe,LATAM,web,paid,10
+S0231,2024-02-10,K028,£330.35,1,Europe,EMEA,store,paid,0
+S0158,2024-04-06,K025,£863.86,5,Americas,North America,web,paid,5
+S0140,2024-01-04,K020,"£1,070.43",6,EUROPE ,LATAM,web,paid,10
+S0214,28/03/2024,K019,€101.33,4,europe,LATAM,web,paid,0
+S0059,20/02/2024,K029,"£1,410.28",7,Europe,EMEA,store,paid,0
+S0057,Feb 19 2024,K001,$615.74,5,Asia,LATAM,store,paid,5
+S0087,Mar 03 2024,K004,"$1,391.95",8,EUROPE ,NA,web,paid,5
+S0005,2024-01-18,K007,"$2,241.17",1,Europe,North America,web,paid,10
+S0149,26/05/2024,K006,"€2,197.77",3,americas,LATAM,web,paid,10
+S0166,2024-04-30,K010,$551.34,1,Europe,EMEA,store,paid,10
+S0051,2024-06-20,K028,"€2,235.79",4,Asia,NA,store,paid,0
+S0118,2024-04-01,K008,"$1,562.32",8,americas,LATAM,web,paid,10
+S0221,2024-02-10,K006,"$2,181.08",3,Asia,LATAM,store,paid,0
+S0172,Feb 16 2024,K009,£612.31,3,Americas,LATAM,web,paid,10
+S0164,25/04/2024,K005,"£1,061.37",6,Americas,LATAM,web,paid,5
+S0127,May 30 2024,K017,"£2,267.47",5,europe,NA,store,paid,5
+S0178,2024-06-11,K024,"£1,384.51",3,Americas,NA,web,paid,0
+S0002,Feb 20 2024,K021,£632.48,5,Asia,NA,web,paid,10
+S0205,2024-01-03,K022,£801.43,2,EUROPE ,LATAM,store,paid,N/A
+S0173,2024-01-20,K017,"€2,424.28",2,Americas,NA,web,paid,0
+S0128,2024-06-23,K027,"$2,068.43",8,Europe,North America,store,paid,0
+S0019,2024-05-02,K028,"£1,733.13",2,Asia,NA,web,paid,0
+S0046,2024-03-23,K023,"€2,405.48",1,Asia,LATAM,web,paid,5
+S0099,16/06/2024,K004,"€1,541.98",8,Asia,NA,web,refunded,10
+S0155,2024-04-15,K023,"£2,413.52",7,Asia,EMEA,store,paid,0
+S0025,2024-04-04,K029,£136.56,3,Asia,EMEA,web,paid,0
+S0016,2024-06-10,K022,£535.34,7,Asia,LATAM,web,paid,10
+S0014,2024-06-08,K031,€353.50,8,Americas,NA,store,paid,5
+S0001,2024-01-10,K008,"$2,325.72",1,Asia,EMEA,store,paid,N/A
+S0165,2024-03-19,K029,"$1,212.42",6,Asia,EMEA,store,paid,5
+S0080,2024-05-18,K031,"£1,109.69",2,Americas,EMEA,web,paid,0
+S0135,2024-04-30,K011,"£1,698.57",8,Asia,NA,web,refunded,5
+S0015,2024-06-09,K030,$834.77,4,americas,NA,web,paid,5
+S0071,2024-05-11,K029,$868.55,2,americas,LATAM,store,paid,0
+S0010,2024-04-08,K014,"$1,055.08",4,Europe,EMEA,store,paid,5
+S0093,2024-03-04,K030,"£1,731.63",4,americas,North America,web,paid,5
+S0104,22/03/2024,K031,"$1,067.50",4,Europe,EMEA,store,paid,5
+S0073,2024-02-10,K029,€369.21,6,americas,LATAM,store,paid,10
+S0035,2024-03-30,K003,"$1,884.41",5,Europe,NA,store,paid,N/A
+S0226,2024-05-09,K023,"£2,107.85",7,Asia,LATAM,store,paid,10
+S0101,2024-02-24,K003,"£1,602.61",5,Asia,LATAM,store,paid,10
+S0171,2024-04-05,K029,"£1,394.70",2,Americas,LATAM,web,refunded,N/A
+S0139,22/02/2024,K023,"$2,172.48",7,Asia,EMEA,store,paid,0
+S0180,2024-05-05,K028,£599.95,8,Asia,NA,web,refunded,0
+S0088,2024-06-08,K004,"€1,214.56",4,Europe,EMEA,web,paid,5
+S0058,2024-06-07,K016,€294.95,2,Americas,LATAM,store,paid,0
+S0062,Feb 19 2024,K029,$371.09,4,EUROPE ,LATAM,web,paid,10
+S0030,2024-06-02,K001,"$1,280.79",4,Americas,North America,store,paid,0
+S0185,2024-05-10,K009,"$1,013.16",4,europe,EMEA,store,paid,5
+S0201,2024-04-18,K023,"€1,446.02",3,Americas,LATAM,store,paid,10
+S0188,2024-03-02,K017,"€2,353.30",3,EUROPE ,EMEA,store,paid,N/A
+S0193,2024-02-17,K006,"£2,128.03",8,EUROPE ,EMEA,web,paid,0
+S0007,Mar 10 2024,K007,€248.44,6,Europe,EMEA,web,paid,5
+S0209,24/01/2024,K030,£916.09,7,EUROPE ,EMEA,store,paid,0
+S0133,2024-02-08,K013,"€1,665.66",5,Asia,EMEA,web,paid,10
+S0082,Feb 13 2024,K020,"€1,440.69",1,Asia,EMEA,store,paid,10
+S0194,29/04/2024,K015,"€1,258.80",8,Americas,LATAM,web,paid,10
+S0186,2024-03-21,K012,"€1,243.80",4,americas,NA,web,paid,10
+S0204,29/03/2024,K005,£585.58,1,europe,LATAM,store,paid,0
+S0085,2024-01-11,K014,£430.48,7,EUROPE ,EMEA,store,paid,5
+S0196,2024-03-11,K017,£68.66,3,americas,EMEA,store,paid,0
+S0069,2024-05-11,K007,"€1,147.43",6,Europe,LATAM,web,paid,N/A
+S0127,May 30 2024,K017,"£2,267.47",5,europe,NA,store,paid,5
+S0147,May 25 2024,K018,"£1,451.69",2,Americas,EMEA,web,paid,0
+S0103,2024-04-22,K030,"£1,579.14",5,Asia,LATAM,store,paid,N/A
+S0223,2024-06-14,K011,$969.54,3,americas,LATAM,web,paid,5
+S0131,2024-06-19,K015,"€1,791.72",2,americas,EMEA,web,paid,10
+S0225,2024-02-11,K014,"£2,290.92",8,Europe,EMEA,store,refunded,10
+S0190,2024-03-02,K003,"€1,229.94",4,Asia,EMEA,store,paid,0
+S0110,2024-06-15,K023,€663.43,4,Asia,LATAM,store,paid,10
+S0175,2024-02-18,K009,$490.10,1,europe,North America,web,paid,0
+S0192,Apr 10 2024,K013,"$1,019.11",1,EUROPE ,EMEA,store,paid,5
+S0203,2024-02-04,K028,"€1,374.83",6,Europe,North America,store,paid,10
+S0021,2024-03-13,K019,"€1,411.99",3,EUROPE ,EMEA,web,paid,10
+S0050,2024-04-22,K010,"£1,484.79",3,americas,LATAM,store,paid,10
+S0112,May 17 2024,K023,£209.97,1,Asia,LATAM,store,paid,5
+S0130,2024-05-22,K022,"€1,244.80",2,Asia,North America,web,paid,5
+S0197,Jun 15 2024,K009,£590.26,2,Asia,NA,web,paid,0
+S0121,2024-02-26,K007,€150.30,3,Asia,LATAM,store,paid,5
+S0036,2024-03-11,K014,"$2,198.14",7,Americas,LATAM,store,refunded,0
+S0212,Mar 24 2024,K001,€209.45,1,Asia,EMEA,store,paid,0
+S0037,Mar 21 2024,K027,"£2,219.69",8,Asia,North America,web,paid,10
+S0008,2024-03-04,K001,£284.88,1,Asia,EMEA,web,paid,0
+S0070,2024-02-16,K012,"€1,210.00",6,Asia,NA,web,paid,5
+S0020,2024-01-05,K014,$725.67,8,europe,NA,web,paid,5
+S0183,2024-05-25,K019,"£1,444.06",4,americas,NA,web,paid,10
+S0189,18/04/2024,K022,$109.83,4,Asia,EMEA,web,refunded,0
+S0034,2024-04-08,K030,"$1,548.58",6,Europe,NA,web,paid,10
+S0156,2024-04-14,K019,€327.67,2,americas,EMEA,store,paid,10
+S0074,16/02/2024,K024,€562.18,3,EUROPE ,EMEA,store,paid,10
+S0076,2024-02-25,K019,"£1,084.64",3,Americas,NA,store,paid,0
+S0065,2024-01-30,K021,"£1,345.61",6,Americas,LATAM,web,paid,5
+S0138,2024-04-21,K003,"€2,041.65",6,Asia,LATAM,web,paid,0
+S0045,2024-06-13,K007,£343.70,4,Asia,North America,store,refunded,0
+S0006,2024-04-06,K007,"£1,061.82",2,americas,LATAM,web,paid,0
+S0163,2024-03-16,K010,"$1,928.88",1,Asia,NA,web,paid,10
+S0160,2024-03-02,K022,£822.94,7,europe,North America,store,paid,0
+S0029,26/06/2024,K015,"£1,219.97",8,Americas,NA,web,paid,10
+S0068,2024-06-23,K025,€223.43,2,Asia,EMEA,store,paid,10
+S0075,2024-01-26,K012,"$2,347.96",1,Europe,EMEA,store,paid,10
+S0028,2024-06-12,K029,$694.24,7,americas,EMEA,store,paid,0
+S0094,2024-03-10,K001,"€1,134.61",1,Europe,North America,store,paid,5
+S0233,2024-01-18,K026,"€1,170.25",5,Europe,EMEA,store,paid,5
+S0095,2024-01-23,K018,£441.67,4,Americas,EMEA,store,paid,10
+S0044,2024-06-09,K018,"$1,007.76",6,Asia,EMEA,web,paid,5
+S0220,2024-03-29,K001,"$2,343.46",6,Americas,NA,store,paid,0
+S0049,2024-05-12,K027,"£1,378.46",8,Asia,LATAM,web,paid,5
+S0232,May 17 2024,K011,"$1,080.56",1,americas,EMEA,web,paid,10
+S0182,May 07 2024,K015,"€1,340.45",5,Europe,NA,web,paid,5
+S0234,27/05/2024,K023,"€1,789.36",4,Americas,EMEA,web,refunded,10
+S0137,Apr 28 2024,K003,"£1,865.32",2,europe,NA,web,paid,N/A
+S0236,2024-03-23,K019,$728.29,3,Asia,LATAM,store,paid,10
+S0056,2024-02-19,K001,"€1,639.77",5,EUROPE ,LATAM,web,paid,5
+S0040,2024-03-01,K002,"$2,108.88",2,Asia,NA,store,paid,5
+S0064,13/04/2024,K026,"£1,816.24",1,EUROPE ,North America,store,paid,10
+S0026,2024-05-01,K028,"$2,303.53",7,Europe,EMEA,web,paid,0
+S0078,2024-06-06,K008,"$1,956.70",5,Asia,EMEA,web,paid,5
+S0218,2024-03-07,K008,£596.86,1,americas,EMEA,web,paid,5
+S0115,2024-02-12,K013,€555.72,7,Americas,EMEA,store,paid,5
+S0177,Jun 14 2024,K022,€860.96,8,europe,LATAM,store,paid,0
+S0168,2024-01-13,K010,£298.13,6,Asia,EMEA,web,paid,10
+S0086,2024-05-28,K011,"£2,495.83",2,EUROPE ,EMEA,store,paid,N/A
+S0208,2024-02-10,K016,€549.31,3,Asia,LATAM,web,paid,0
+S0142,May 10 2024,K010,"€2,087.14",2,Americas,LATAM,web,paid,10
+S0041,2024-06-24,K027,$542.56,8,Asia,North America,web,paid,10
+S0146,2024-04-02,K029,"€1,233.81",2,Asia,LATAM,web,paid,5
+S0091,2024-05-03,K029,"$1,338.44",5,americas,LATAM,store,paid,10
+S0009,23/05/2024,K017,"$1,192.89",4,Americas,North America,store,refunded,0
+S0039,24/05/2024,K005,"$1,700.30",7,Asia,North America,web,paid,10
+S0129,2024-05-06,K031,"$2,201.06",5,Asia,EMEA,store,paid,5
+S0079,14/06/2024,K004,€48.25,5,Asia,EMEA,store,paid,0
+S0174,30/05/2024,K009,"€1,428.38",7,Americas,NA,web,paid,10
+S0205,2024-01-03,K022,£801.43,2,EUROPE ,LATAM,store,paid,N/A
+S0112,May 17 2024,K023,£209.97,1,Asia,LATAM,store,paid,5
+S0048,2024-04-19,K018,$473.23,6,Americas,North America,store,paid,5
+S0207,May 06 2024,K013,"$1,304.27",6,Asia,EMEA,store,refunded,5
+S0031,2024-06-17,K029,€690.64,1,Asia,EMEA,web,paid,0
+S0125,2024-05-26,K007,$23.57,3,Europe,NA,store,paid,10
+S0224,18/01/2024,K023,"$2,341.58",5,Europe,EMEA,store,paid,5
+S0117,Apr 27 2024,K016,"$1,551.09",1,Asia,North America,web,refunded,5
+S0136,2024-06-08,K022,$364.56,3,Europe,NA,store,paid,5
+S0202,Apr 25 2024,K005,"£1,008.26",4,Asia,LATAM,store,paid,10
+S0047,Apr 22 2024,K014,"€1,462.58",5,Asia,NA,web,paid,5
+S0144,20/02/2024,K023,"£1,895.34",4,Americas,NA,web,refunded,5
+S0217,May 06 2024,K001,"€1,260.04",3,americas,North America,store,paid,5
+S0159,24/04/2024,K028,"$1,337.62",7,europe,EMEA,web,paid,0
+S0111,2024-04-10,K026,€905.55,6,Americas,NA,store,paid,10
+S0055,2024-05-01,K011,€352.83,7,Asia,LATAM,store,paid,5
+S0184,18/04/2024,K011,"$1,843.59",5,americas,EMEA,web,paid,0
+S0063,2024-04-09,K027,"$1,159.79",7,Americas,LATAM,web,refunded,5
+S0229,2024-06-08,K008,£785.34,3,europe,EMEA,web,paid,10
+S0199,22/01/2024,K009,€872.62,1,Asia,EMEA,web,paid,10
+S0017,Jan 13 2024,K002,$305.86,5,Europe,LATAM,store,paid,10
+S0066,2024-05-03,K002,$83.71,8,Europe,North America,web,paid,5
+S0012,Mar 07 2024,K020,"$2,045.55",6,Asia,EMEA,web,paid,5
+S0222,Mar 16 2024,K010,"€1,107.37",6,Americas,LATAM,store,paid,N/A
+S0106,2024-05-18,K019,"$2,212.51",3,EUROPE ,NA,store,paid,10
+S0187,Jun 02 2024,K024,$399.00,8,americas,LATAM,web,paid,5
+S0230,2024-06-25,K009,"€1,119.17",7,Asia,LATAM,web,paid,5
+S0067,Feb 22 2024,K006,"$2,222.57",5,Americas,NA,web,paid,5
+S0162,Feb 01 2024,K017,$278.37,3,EUROPE ,LATAM,store,refunded,5
+S0060,2024-06-06,K007,"$1,430.81",4,americas,NA,web,paid,5
+S0126,2024-06-06,K004,"£1,403.98",8,americas,EMEA,web,refunded,0
+S0179,21/04/2024,K015,"$1,772.27",5,Americas,LATAM,web,paid,10
+S0024,18/01/2024,K011,£835.43,3,Europe,NA,store,paid,0
+S0084,2024-03-10,K010,"£2,456.56",5,europe,North America,web,paid,0
+S0102,Feb 06 2024,K022,$957.95,6,Asia,NA,store,paid,0
+S0181,2024-01-14,K028,"£1,195.40",3,Asia,North America,web,paid,0
+S0100,2024-05-24,K027,"£1,291.02",8,Asia,North America,web,paid,10
+S0038,2024-06-04,K023,"$1,798.00",5,Americas,EMEA,store,paid,0
+S0238,2024-01-14,K001,$188.76,5,americas,North America,web,paid,5
+S0239,27/03/2024,K026,€386.30,4,Asia,EMEA,web,paid,N/A
+S0092,Mar 10 2024,K024,"£1,815.78",4,americas,EMEA,web,paid,5
+S0119,17/02/2024,K006,"€1,075.09",5,americas,LATAM,store,paid,10
+S0216,2024-04-07,K026,€119.97,3,Americas,LATAM,store,refunded,10
+S0151,2024-05-31,K025,"£2,127.15",1,Europe,North America,store,paid,10
+S0148,2024-03-26,K004,£401.78,1,Asia,LATAM,store,paid,5
+S0116,2024-04-30,K004,"€1,935.67",5,americas,North America,web,paid,5
+S0100,2024-05-24,K027,"£1,291.02",8,Asia,North America,web,paid,10
+S0176,2024-04-28,K001,"£1,028.49",8,EUROPE ,NA,web,paid,0
+S0134,18/02/2024,K024,"$1,007.10",2,Asia,EMEA,store,paid,0
+S0206,2024-02-01,K026,€634.99,5,europe,EMEA,web,paid,10
+S0152,Jan 09 2024,K013,"$1,403.75",2,americas,EMEA,web,paid,10
+S0097,Apr 24 2024,K025,"£2,216.73",4,Asia,EMEA,store,paid,10
+S0090,2024-05-29,K012,"£1,119.77",3,Asia,LATAM,web,refunded,5
+S0167,Jan 05 2024,K029,"$1,685.60",4,Americas,LATAM,web,paid,5
+S0042,May 16 2024,K006,£114.83,4,Asia,EMEA,web,paid,10
+S0211,2024-04-13,K013,€163.18,8,americas,EMEA,store,paid,0
+S0089,2024-04-03,K022,€386.42,7,Asia,LATAM,store,paid,0
+S0004,2024-05-11,K007,€97.99,2,Asia,North America,store,paid,10
+S0052,May 07 2024,K018,"$1,097.63",2,americas,NA,store,paid,N/A
+S0083,2024-05-14,K010,"€1,587.18",6,americas,EMEA,store,paid,0
+S0150,2024-01-09,K026,€492.03,3,Asia,LATAM,store,paid,0
+S0198,2024-04-02,K008,"$2,027.20",2,Europe,EMEA,store,refunded,10
+S0043,2024-06-28,K014,$248.61,7,Europe,EMEA,store,paid,5
+S0219,20/05/2024,K021,"€2,245.53",2,americas,LATAM,store,paid,10
+S0191,2024-02-25,K013,$440.50,1,Americas,EMEA,web,paid,10
+S0141,2024-03-25,K010,$917.15,8,Europe,LATAM,store,paid,5
+S0027,Jun 18 2024,K019,"€1,013.98",1,Americas,North America,web,refunded,5
+S0124,2024-05-12,K024,"$1,689.76",5,americas,LATAM,web,paid,5
+S0200,2024-01-11,K017,$415.49,3,Europe,NA,store,paid,10

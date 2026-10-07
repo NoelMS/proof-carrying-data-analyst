@@ -1,5 +1,6 @@
 """End-to-end: question -> verified answer or refusal, including repair and adversarial paths."""
 import json
+from pathlib import Path
 
 import pytest
 
@@ -241,3 +242,27 @@ def test_model_reads_a_word_the_rules_cannot(make_catalog):
     st = a.run("avg cholestrol")  # a typo the rules cannot resolve; 'chol' names the column
     assert st.verified and st.interpreter.startswith("local model"), st.final
     assert st.final["numeric_value"] == "229.00"
+
+
+MESSY = json.loads((Path(__file__).resolve().parent.parent / "data" / "messy" / "ground_truth.json").read_text(encoding="utf-8"))
+
+
+@pytest.fixture(scope="module")
+def messy(tmp_path_factory):
+    from app.catalog import build_catalog
+    from app.ingestion import load_directory
+    return Analyst(build_catalog(load_directory(Path(__file__).resolve().parent.parent / "data" / "messy",
+                                                tmp_path_factory.mktemp("messy"))), CFG)
+
+
+@pytest.mark.parametrize("case", MESSY, ids=[c["question"] for c in MESSY])
+def test_messy_ground_truth(messy, case):
+    """Symbols, separators, mixed dates, label variants, placeholders, duplicates, refunds and documents."""
+    f = messy.run(case["question"]).final
+    if case["answerable"]:
+        assert f["status"] == "verified", f.get("reason")
+        assert normalize(f["numeric_value"]) == normalize(case["expected"])
+    else:
+        assert f["status"] == "refused" and f["proof_code"] is None
+        if case.get("expected_refusal"):
+            assert f["answerability"] == case["expected_refusal"], f["reason"]

@@ -20,8 +20,9 @@ def _rate(n: int, d: int) -> float | None:
     return round(n / d, 4) if d else None
 
 
-def run_benchmark(analyst: Analyst, cases: list[dict], progress=None, should_stop=None) -> dict:
-    """`progress(event)` receives {"type": "case_start" | "stage" | "case_done", ...} as work happens.
+def run_benchmark(analyst: Analyst | dict, cases: list[dict], progress=None, should_stop=None) -> dict:
+    """`analyst` may map each case's "dataset" to the Analyst for that dataset.
+    `progress(event)` receives {"type": "case_start" | "stage" | "case_done", ...} as work happens.
     `should_stop()` is checked before each question; the report then covers the questions completed."""
     rows, attempts, exec_ok, verified_attempts, reproduced = [], 0, 0, 0, 0
     t0 = time.monotonic()
@@ -33,7 +34,8 @@ def run_benchmark(analyst: Analyst, cases: list[dict], progress=None, should_sto
             break
         emit({"type": "case_start", "index": i, "question": case["question"], "answerable": case["answerable"]})
         tc = time.monotonic()
-        st = analyst.run(case["question"], on_event=lambda s, i=i: emit(
+        an = analyst[case["dataset"]] if isinstance(analyst, dict) else analyst
+        st = an.run(case["question"], on_event=lambda s, i=i: emit(
             {"type": "stage", "index": i, "stage": s.stages[-1]["stage"], "next": s.stages[-1].get("next")}))
         f = st.final
         verified = f["status"] == "verified"
@@ -45,13 +47,13 @@ def run_benchmark(analyst: Analyst, cases: list[dict], progress=None, should_sto
         repro = None
         if verified:  # reproduce the shown proof once more, outside the workflow
             emit({"type": "stage", "index": i, "stage": "answer", "next": "reproduce"})
-            r = analyst.sandbox.run(f["proof_code"], analyst.cat.workspace.data_dir, st.plan.tables)
+            r = an.sandbox.run(f["proof_code"], an.cat.workspace.data_dir, st.plan.tables)
             repro = bool(r.ok and normalize(r.result) == normalize(f["numeric_value"]))
             reproduced += repro
         expected_refusal = case.get("expected_refusal")
         got_refusal = None if verified else f.get("answerability")
         refused_right = not verified and (expected_refusal is None or got_refusal == expected_refusal)
-        row = {"question": case["question"], "answerable": case["answerable"], "status": f["status"],
+        row = {"question": case["question"], "dataset": case.get("dataset"), "answerable": case["answerable"], "status": f["status"],
                "correct": correct if case["answerable"] else refused_right,
                "expected_refusal": expected_refusal, "got_refusal": got_refusal,
                "confident_wrong": verified and not correct,
@@ -80,6 +82,12 @@ def run_benchmark(analyst: Analyst, cases: list[dict], progress=None, should_sto
             "proof_reproduction_rate": _rate(reproduced, n_verified),
             "confident_wrong_rate": _rate(sum(r["confident_wrong"] for r in rows), len(rows)),
         },
+        "by_dataset": {d: {"questions": len(rs),
+                           "valid_answer_accuracy": _rate(sum(r["correct"] for r in rs if r["answerable"]), sum(r["answerable"] for r in rs)),
+                           "refusal_accuracy": _rate(sum(r["correct"] for r in rs if not r["answerable"]), sum(not r["answerable"] for r in rs)),
+                           "confident_wrong_rate": _rate(sum(r["confident_wrong"] for r in rs), len(rs))}
+                       for d in dict.fromkeys(r["dataset"] for r in rows) if d
+                       for rs in [[r for r in rows if r["dataset"] == d]]},
         "rows": rows,
     }
 

@@ -42,7 +42,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
-from .benchmark import run_and_save
+from .benchmark import run_benchmark
 from .catalog import Catalog, build_catalog
 from .answerability import assess
 from .config import Config
@@ -61,6 +61,8 @@ from .workflow import AnalysisState, Analyst, format_value, setup_logging
 ROOT = Path(__file__).resolve().parent.parent
 FRONTEND = ROOT / "frontend"
 DEMO = ROOT / "data" / "synthetic"
+MESSY = ROOT / "data" / "messy"  # real-world messiness and documents; its own independently computed answer key
+BENCHMARKS = {"demonstration": DEMO, "messy": MESSY}
 STATE = Path(os.environ.get("PCDA_STATE_DIR") or ROOT / ".pcda")  # history, uploads, fixes, active workspace
 HISTORY = STATE / "history"
 UPLOADS = STATE / "uploads"
@@ -429,13 +431,16 @@ class App:
         with self.lock:
             if self.bench.get("running"):
                 raise LookupError("A benchmark is already running.")
-            cases = json.loads((DEMO / "ground_truth.json").read_text(encoding="utf-8"))
+            cases = [{**c, "dataset": name} for name, d in BENCHMARKS.items() if (d / "ground_truth.json").exists()
+                     for c in json.loads((d / "ground_truth.json").read_text(encoding="utf-8"))]
             self.bench = {"running": True, "total": len(cases), "done": 0, "current": None, "rows": [],
                           "started_at": time.time(), "error": None, "report": None, "cancel": False, "cancelled": False,
                           "questions": [c["question"] for c in cases],
                           "cases": [{"question": c["question"], "answerable": c["answerable"], "expected": c["expected"],
                                      "expected_refusal": c.get("expected_refusal")} for c in cases]}
-        cat = self._build("demonstration", with_fixes=False)  # ground truth refers to the original data
+        # the answer keys refer to the original data: no fixes, each dataset in its own workspace
+        analysts = {name: Analyst(build_catalog(load_directory(d, Path(tempfile.mkdtemp(prefix="pcda_bench_")))), self.cfg)
+                    for name, d in BENCHMARKS.items() if (d / "ground_truth.json").exists()}
 
         def progress(e):
             b = self.bench
@@ -452,9 +457,10 @@ class App:
 
         def work():
             try:
-                self.bench["report"] = run_and_save(cat, DEMO / "ground_truth.json", out=self.results_file,
-                                                    analyst=Analyst(cat, self.cfg), progress=progress,
-                                                    should_stop=lambda: self.bench.get("cancel"))
+                report = run_benchmark(analysts, cases, progress, should_stop=lambda: self.bench.get("cancel"))
+                if not report["cancelled"]:
+                    self.results_file.write_text(json.dumps(report, indent=2), encoding="utf-8")
+                self.bench["report"] = report
                 self.bench["cancelled"] = self.bench["report"]["cancelled"]
             except Exception as e:  # surfaced in the progress view, never silent
                 self.bench["error"] = f"{type(e).__name__}: {e}"

@@ -38,7 +38,7 @@ export function renderDataList(main) {
       onclick: () => fileInput.click(),
       onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileInput.click(); } } },
     h("span", { class: "btn btn--primary", "aria-hidden": "true" }, "Add files ", arrow()),
-    h("span", { class: "meta", id: "drop-help" }, "or drop CSV / Excel files here. Files are added to your uploads; a file with the same name replaces the earlier one."));
+    h("span", { class: "meta", id: "drop-help" }, "or drop CSV / Excel tables and .txt / .md / .pdf documents here. Files are added to your uploads; a file with the same name replaces the earlier one."));
   drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("is-over"); });
   drop.addEventListener("dragleave", () => drop.classList.remove("is-over"));
   drop.addEventListener("drop", (e) => { e.preventDefault(); drop.classList.remove("is-over"); addFiles([...e.dataTransfer.files]); });

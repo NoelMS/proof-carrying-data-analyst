@@ -199,6 +199,21 @@ Every loose reading is listed with the result under **Read as**, so the interpre
 - **Currency:** a column named `currency` (or `*_currency`) marks the currency of amounts.
 - **Exchange rates:** a table whose `currency` column is unique and that has a `rate_to_<code>` style column supplies conversions.
 - **Units:** a `<measure>_unit` column marks the units of a measure.
+- **Documents** (`.txt`, `.md`, `.pdf`) uploaded with the tables are read as rules, by fixed sentence patterns (no model):
+  - "Revenue is defined as the sum of amount." becomes a metric definition, unless `metrics.json` defines it;
+  - "Revenue excludes refunds." becomes a filter (`status != 'refunded'`), so it is part of the proof and of the independent check;
+  - a sentence about the asked metric that cannot be applied makes the question refused, quoting it;
+  - "The fiscal year starts in April." makes "fiscal year 2024" refused as ambiguous (does it start or end in 2024?);
+  - instruction-like sentences are listed and never followed.
+- **Clean-up at upload**, only where the result is unambiguous, each change recorded and disclosed with the answer and in the proof bundle:
+  - "N/A", "null", "-" in numeric or date columns are missing values (in text columns only "N/A", "null", "none");
+  - "$1,200.50", "€300", "1 200 EUR" become numbers plus a `<column>_currency` column ("$" is read as USD);
+  - "europe " and "EUROPE" are merged into "Europe" (case and spacing only);
+  - ISO, "Jan 7 2024" and day/month dates where a day exceeds 12 are written as ISO dates.
+  Ambiguous cases are left as uploaded and refused: "1,200.50" next to "1.200,50", "05/01/2024", and labels that may
+  be the same ("EU" / "Europe"), which get a "Merge label variants" fix.
+- **Synonyms** come from a curated list (`app/synonyms.py`): "clients" is read as customers only if customers is a word
+  of the data and no other member of the group is. Terms that need a definition (profit, margin, ROI) are never mapped.
 
 ## Security
 
@@ -259,7 +274,7 @@ Exact duplicate rows (identical in every field, including the record ID) are cou
 python -m pytest -q
 ```
 
-The suite (225 tests) covers:
+The suite (275 tests) covers:
 - ingestion: malformed, empty or corrupted files, encodings, hostile column names
 - profiling and trap detection
 - sandbox isolation: environment secrets, subprocess, file reads and writes, network, ctypes, timeout, memory
@@ -307,10 +322,46 @@ Reason: Amounts are in EUR, GBP, USD. Adding them without conversion is meaningl
 
 `ground_truth.json` lists 48 questions: 17 that must be answered and 31 that must be refused, including questions whose qualifier (a filter, a second period, a comparison) a naive reader would drop. Expected answers are computed by the generator from the clean records, before the traps are injected. Each refusal case also states the reason it must be refused for (ambiguous, insufficient data, contradictory data, unsupported operation), and the benchmark counts a refusal as correct only when that reason matches.
 
+## Scorecard
+
+Two labelled datasets, each with an answer key computed by its generator from the clean records, independently of the
+analysis engine: `data/synthetic` (the demonstration data) and `data/messy` (currency symbols and separators, mixed
+date formats, label variants, "N/A" placeholders, duplicates, refunds, a contradicting summary table, a policy text and
+a PDF of definitions). Both are run by the System page benchmark and by the test suite.
+
+| Dataset | Questions | Mode | Correct answers | Correct refusals | Confident wrong |
+|---|---|---|---|---|---|
+| demonstration | 53 (22 answerable, 31 must refuse) | predefined rules | 100% | 100% | 0% |
+| demonstration | 53 | local model + `pcda-interpreter` | 100% | 100% | 0% |
+| messy | 26 (12 answerable, 14 must refuse) | predefined rules | 100% | 100% | 0% |
+| messy | 26 | local model + `pcda-interpreter` | 100% | 100% | 0% |
+
+Every verified answer's proof was re-run once more outside the workflow and reproduced the same value (100%).
+
+
+Both datasets were written for this project, so these scores show that each trap is handled as designed, not how the
+analyst scores on data it has never seen.
+
+| Trap | What happens |
+|---|---|
+| Units don't match ($/€, kg/lb) | Converted with the data's exchange rates or unit factors; without them, or with no reporting currency, refused |
+| Ambiguous dates | Unambiguous formats normalised; "05/01/2024"-style dates refused, with a fix to choose the reading |
+| Duplicated rows | Exact duplicates counted once and disclosed; the same key with different values refused (contradiction) |
+| Tables contradict each other | Pre-aggregated summaries are never a source; durations across contradictory dates are refused |
+| Missing data | Refused when the missing values would change the answer, with a fix |
+| No valid answer | Refused with the reason (no such column, no definition, outside the data's dates) and answerable rewrites |
+| Trick questions | Instructions in questions, data or documents are ignored; every word of the question must be used |
+
 ## Limitations
+
+What it still refuses or cannot do, so a judge's question in these forms gets a reasoned refusal, not an answer:
+- vague terms with no definition in the data or documents ("shipping delay", "shipped late", "best selling");
+- a threshold on amounts in several currencies when the question asks for a count ("orders over 1000");
+- grouped rates, grouped growth, grouped shares, and three or more grouping columns;
+- counts of rows with no match that also have conditions ("customers with no orders in 2024");
+- document rules beyond definitions, exclusions, restrictions and the fiscal-year start;
 
 - The deterministic parser covers the question grammar described above. Broader phrasing needs the local model.
 - The local model is small. On the 17 answerable benchmark questions, `qwen2.5-coder:1.5b` wrote 5 of the verified proofs itself; the template fallback wrote the other 12 (answer accuracy 100%, confident-wrong 0%). With the same prompt `qwen2.5:1.5b` wrote 1; `qwen2.5-coder:3b`, tried with an earlier prompt, wrote 2 at twice the time. A model-written proof is never accepted without passing every check. Fine-tuning (`training/`) is the route to a higher share.
 - Exchange rates must be one fixed rate per currency. Time-varying rate tables are refused, not guessed.
-- Grouping by two dimensions, and grouped rates or growth, are not supported and are refused.
 - The missing-value check on a grouping column considers the whole table, so it may refuse when the missing rows are not actually reached.

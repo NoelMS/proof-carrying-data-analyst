@@ -108,6 +108,12 @@ async function renderBench(host, s) {
       `Last run ${new Date(report.run_at).toLocaleString()} · ${report.cases} questions · ${report.duration_s} s`));
     body.push(h("ul", { class: "metric-list" }, Object.entries(report.metrics).map(([k, v]) =>
       h("li", {}, h("span", {}, label(k)), h("span", { class: "num" }, v == null ? "n/a" : `${(v * 100).toFixed(1)}%`)))));
+    const pct = (v) => (v == null ? "n/a" : `${(v * 100).toFixed(1)}%`);
+    if (report.by_dataset) body.push(h("div", { style: { "margin-top": "var(--space-4)" } }, table(
+      ["dataset", "questions", "answers right", "refusals right", "confident wrong"],
+      Object.entries(report.by_dataset).map(([d, m]) =>
+        [d, String(m.questions), pct(m.valid_answer_accuracy), pct(m.refusal_accuracy), pct(m.confident_wrong_rate)]),
+      { numeric: ["questions", "answers right", "refusals right", "confident wrong"] })));
     body.push(h("details", { class: "disclosure", style: { "margin-top": "var(--space-5)" } },
       h("summary", {}, "Per-question results", arrow()), benchRows(report.rows, report.rows.length, null)));
   } else {

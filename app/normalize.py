@@ -163,7 +163,7 @@ def _labels(df, c) -> str | None:
     for _, group in filled.groupby(key):
         spellings = group.value_counts()
         if len(spellings) > 1:
-            canon = sorted(spellings.index, key=lambda v: (-spellings[v], v))[0]
+            canon = sorted(spellings.index, key=lambda v: (v.islower() or v.isupper(), -spellings[v], v))[0]  # "Europe" over "europe"
             others = [v for v in spellings.index if v != canon]
             df.loc[group.index, c] = canon
             merged.append(f"{', '.join(repr(o) for o in others)} -> {canon!r}")
