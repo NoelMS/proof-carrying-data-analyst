@@ -17,6 +17,7 @@ code generation -> sandbox execution -> independent verification -> repair/refus
 - T-10 Synthetic data + ground truth, pytest suite, benchmark, README, security hardening.
 
 - T-11 Data fixes with preview/confirm/rollback (`app/fixes.py`), Workbench and runnable bundles, cross-session re-run, live benchmark progress, themed scrollbars.
+- T-12 Hallucination guards. Verification only proves code matches the plan, so a plan that dropped part of the question was "verified" while answering a different question (e.g. "What percentage of payments were completed?" -> VERIFIED 702; "revenue for customer C001" -> grand total). Fixes: every-word guard (`unexplained_terms`) for parser and model readings; data values as filters and rates; Claude reading cross-checked against the parser; currency only for monetary columns; mean/median precision >= 2; status columns with several values block sums; ambiguous column across tables and ambiguous currency names refused; "which month" as time grain; empty selections no longer crash the DuckDB check; deterministic template failures are not "repaired"; a regex in `_count_fallback` contained literal backspace bytes instead of `\b` and never matched.
 
 ## Current task
 None in progress.
@@ -29,8 +30,8 @@ None in progress.
 - The deterministic parser's grammar is limited (see README > Configuration).
 
 ## Tests executed
-`python -m pytest -q`: all 140 pass on Windows 11 with Python 3.13, in both the project venv (pandas 3.0) and the user's global Python 3.13 (pandas 2.3). Docker tests ran with Docker Desktop and `pcda-sandbox:latest`.
-`python scripts/cli.py benchmark`: 28 questions (11 answer, 17 refusal with expected reason), all metrics 1.0, confident-wrong rate 0.0.
+`python -m pytest -q`: 181 pass, 4 Docker tests skipped (no image) on Windows 11 with Python 3.14 in the project venv (pandas 3.0.6).
+`python scripts/cli.py benchmark`: 48 questions (17 answer, 31 refusal with expected reason), all metrics 1.0, confident-wrong rate 0.0.
 
 ## Tests failing
 None.

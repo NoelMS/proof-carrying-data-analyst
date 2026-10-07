@@ -11,7 +11,7 @@ export function renderHome(main) {
   setTitle("");
   const input = h("textarea", {
     id: "question", class: "command__input", name: "question", rows: "3", required: true, maxlength: "2000",
-    placeholder: "Ask in your own words, e.g. which region sold the most in usd?", "aria-describedby": "question-hints question-error",
+    placeholder: "Ask in your own words, e.g. which region had the highest revenue in usd?", "aria-describedby": "question-hints question-error",
   });
   const claim = h("input", { id: "claim", name: "claim", type: "text", inputmode: "decimal", autocomplete: "off", placeholder: "optional" });
   const error = h("p", { class: "command__error", id: "question-error", "aria-live": "polite" });

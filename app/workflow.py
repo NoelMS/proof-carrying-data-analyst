@@ -25,8 +25,9 @@ from .fixes import unblocking_fixes
 from .llm import ClaudeClient, LLMError
 from .local_model import LocalInterpreter, differences
 from .planning import Plan, build_plan
-from .question import QuerySpec, catalog_summary, parse_question
+from .question import QuerySpec, blocked, catalog_summary, parse_question, unexplained_terms, vocabulary
 from .sandbox import ExecutionResult, Sandbox
+from .security import is_instruction_like
 from .traps import Issue
 from .verification import Verification, verify
 
@@ -136,48 +137,84 @@ class Analyst:
         if not st.question:
             st.final = self._refusal(st, "No question was asked.", [])
             return "done"
+        parsed = self._ground(st.question, parse_question(st.question, self.cat.tables, self.cat.profiles,
+                                                          self.cat.metrics))
         if isinstance(self.llm, LocalInterpreter):
-            return self._interpret_local(st)
-        if self.llm:
-            try:
-                st.spec = self.llm.interpret(st.question, catalog_summary(
-                    self.cat.tables, self.cat.profiles, self.cat.relationships, self.cat.metrics))
-                st.interpreter = f"model ({self.cfg.llm_model})"
-                return "assess"
-            except LLMError as e:
-                st.interpreter = f"deterministic parser (model unavailable: {e})"
-        st.spec = parse_question(st.question, self.cat.tables, self.cat.profiles, self.cat.metrics)
-        st.interpreter = st.interpreter or "deterministic parser"
+            self._interpret_local(st, parsed)
+        elif self.llm:
+            self._interpret_model(st, parsed)
+        else:
+            st.spec, st.interpreter = parsed, "deterministic parser"
+        if is_instruction_like(st.question):
+            st.spec.notes.append("instruction-like text in the question was treated as data and ignored")
         return "assess"
 
-    def _interpret_local(self, st: AnalysisState) -> str:
+    def _ground(self, question: str, spec: QuerySpec) -> QuerySpec:
+        """Refuse a reading that leaves part of the question unused, whoever produced it (see unexplained_terms)."""
+        if blocked(spec):
+            return spec
+        left = unexplained_terms(question, spec, self.cat.tables, self.cat.profiles, self.cat.metrics)
+        if not left:
+            return spec
+        vocab = vocabulary(self.cat.tables, self.cat.metrics)
+        if any(w in vocab or w.isdigit() for w in left):  # known words used in a way the spec cannot express
+            words = ", ".join(repr(w) for w in left)
+            spec.unsupported.append(f"The question also says {words}, which this reading cannot use; answering "
+                                    "without it would answer a different question.")
+        else:
+            spec.unresolved.append(", ".join(left))
+        return spec
+
+    def _interpret_model(self, st: AnalysisState, parsed: QuerySpec):
+        """Claude and the rule-based parser both read the question. Both readings must account for every word;
+        when both do and they disagree, the question is ambiguous and is refused rather than picking one."""
+        name = f"model ({self.cfg.llm_model})"
+        try:
+            model_spec = self._ground(st.question, self.llm.interpret(st.question, catalog_summary(
+                self.cat.tables, self.cat.profiles, self.cat.relationships, self.cat.metrics)))
+        except LLMError as e:
+            st.spec, st.interpreter = parsed, f"deterministic parser (model unavailable: {e})"
+            return
+        if not blocked(parsed) and not blocked(model_spec):
+            if diff := differences(parsed, model_spec):
+                parsed.ambiguities.append("The question can be read in more than one way: the model and the "
+                                          f"rule-based parser disagree on {', '.join(diff)}. Rephrase it more precisely.")
+                st.spec, st.interpreter = parsed, f"{name} + deterministic parser (disagree)"
+            else:
+                model_spec.notes.append("the rule-based parser reads it the same way")
+                st.spec, st.interpreter = model_spec, name
+        elif blocked(model_spec) and not blocked(parsed):
+            parsed.notes.append("the model's reading was rejected: " + "; ".join(
+                model_spec.unresolved + model_spec.ambiguities + model_spec.unsupported))
+            st.spec, st.interpreter = parsed, "deterministic parser"
+        else:
+            st.spec, st.interpreter = model_spec, name
+
+    def _interpret_local(self, st: AnalysisState, parsed: QuerySpec):
         """Parser first; the local model reads what the parser cannot. A small model can misread a question
         the parser reads correctly, so the parser's complete reading always wins and a model that disagrees
         is only reported. Whatever is chosen still goes through every answerability check."""
-        parsed = parse_question(st.question, self.cat.tables, self.cat.profiles, self.cat.metrics)
         name = f"local model ({self.cfg.local_model})"
         try:
-            model_spec = self.llm.interpret(st.question, catalog_summary(
-                self.cat.tables, self.cat.profiles, self.cat.relationships, self.cat.metrics))
+            model_spec = self._ground(st.question, self.llm.interpret(st.question, catalog_summary(
+                self.cat.tables, self.cat.profiles, self.cat.relationships, self.cat.metrics)))
         except LLMError as e:
             st.spec, st.interpreter = parsed, f"deterministic parser ({name} unavailable: {e})"
-            return "assess"
-        if not parsed.unresolved:
+            return
+        if not blocked(parsed):
             st.spec, st.interpreter = parsed, "deterministic parser"
             diff = differences(parsed, model_spec)
             parsed.notes.append(f"{name} agrees with this reading" if not diff
                                 else f"{name} read it differently ({', '.join(diff)}); the parser's reading is used")
-        elif not model_spec.unresolved and self._refs_exist(model_spec):
-            model_spec.notes = [f"read by the {name}: the rule-based parser did not recognise "
-                                f"{', '.join(repr(u) for u in parsed.unresolved)}"]
+        elif not blocked(model_spec) and self._refs_exist(model_spec):
+            model_spec.notes = [f"read by the {name}: the rule-based parser could not read all of it"]
             st.spec, st.interpreter = model_spec, name
         else:
             st.spec, st.interpreter = parsed, "deterministic parser"
-            if model_spec.unresolved:
+            if blocked(model_spec):
                 parsed.notes.append(f"{name} could not read it either")
             else:
                 parsed.notes.append(f"{name} referred to columns that do not exist; its reading was discarded")
-        return "assess"
 
     def _refs_exist(self, spec: QuerySpec) -> bool:
         tables = self.cat.tables
@@ -226,10 +263,16 @@ class Analyst:
             return "answer"
         at.failure_reason = "; ".join(v.failures())
         only_claim = [c.name for c in v.checks if not c.passed] == ["claim_matches_execution"]
-        if only_claim or len(st.attempts) > self.cfg.max_repairs:
-            reason = (f"The claimed value {st.claimed_value} is contradicted by the executed proof, which gives "
-                      f"{v.executed_value}." if only_claim else
-                      f"Verification failed after {len(st.attempts)} attempt(s): {at.failure_reason}")
+        # the template is deterministic: regenerating it gives the same code, so a repair cannot help
+        if only_claim or at.source == "template" or len(st.attempts) > self.cfg.max_repairs:
+            err = at.execution.error or ""
+            if only_claim:
+                reason = (f"The claimed value {st.claimed_value} is contradicted by the executed proof, which gives "
+                          f"{v.executed_value}.")
+            elif "AssertionError" in err:  # one of the proof's own data checks stopped the calculation
+                reason = f"The data does not support this calculation: {err.split('AssertionError:', 1)[-1].strip()}."
+            else:
+                reason = f"Verification failed after {len(st.attempts)} attempt(s): {at.failure_reason}"
             st.final = self._refusal(st, reason, [])
             return "done"
         return "generate"

@@ -153,6 +153,45 @@ def test_hostile_model_code_is_rejected_then_repaired(catalog):
     assert st.attempts[1].source == "template" and st.verified
 
 
+def test_model_reading_that_drops_a_qualifier_is_refused(catalog):
+    a = Analyst(catalog, CFG)  # the model ignores "excluding refunds" and maps the rest correctly
+    a.llm = FakeModel(QuerySpec(metric_term="revenue", table="orders", measure="amount", currency="USD"))
+    st = a.run("What is the total revenue in USD excluding refunds?")
+    assert st.final["status"] == "refused" and "refunds" in st.final["reason"]
+
+
+def test_model_reading_with_the_wrong_value_is_rejected(catalog):
+    a = Analyst(catalog, CFG)  # the model filters on another channel, leaving 'web' unused
+    a.llm = FakeModel(QuerySpec(metric_term="revenue", table="orders", measure="amount", currency="USD",
+                                filters=[{"column": "orders.channel", "op": "==", "value": "partner"}]))
+    st = a.run("What is the revenue in USD from the web channel?")
+    assert st.verified and st.final["numeric_value"] == "292117.70"
+    assert any("model's reading was rejected" in n for n in st.spec.notes)
+
+
+def test_model_and_parser_disagreeing_is_ambiguous(catalog):
+    a = Analyst(catalog, CFG)  # both readings use every word, but count by different dates
+    a.llm = FakeModel(QuerySpec(metric_term="orders", table="orders", measure="order_id", aggregation="count_distinct",
+                                date_column="payments.payment_date", date_from="2024-01-01", date_to="2024-12-31"))
+    st = a.run("How many orders were placed in 2024?")
+    assert st.final["status"] == "refused" and st.final["answerability"] == "AMBIGUOUS"
+    assert "date_column" in st.final["reason"]
+
+
+def test_model_synonym_guess_is_refused(catalog):
+    a = Analyst(catalog, CFG)  # 'profit' mapped to the amount column because it is similar in meaning
+    a.llm = FakeModel(QuerySpec(metric_term="profit", table="orders", measure="amount", currency="USD"))
+    st = a.run("What is the total profit in USD?")
+    assert st.final["status"] == "refused" and "profit" in st.final["reason"]
+
+
+def test_empty_selection_is_zero_for_sums_and_refused_for_means(analyst):
+    st = analyst.run("What was the revenue in USD on 2024-03-15?")
+    assert st.verified and st.final["numeric_value"] == "0.00"
+    st = analyst.run("What is the average order value in USD on 2024-03-15?")
+    assert st.final["status"] == "refused" and "no rows" in st.final["reason"] and len(st.attempts) == 1
+
+
 def test_model_outage_falls_back_visibly(catalog):
     a = Analyst(catalog, CFG)
     a.llm = FakeModel(fail=True)

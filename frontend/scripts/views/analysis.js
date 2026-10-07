@@ -59,6 +59,7 @@ function describeMetric(s) {
   if (sp.ratio_filter) parts.push(cap(sp.metric_term || "rate"));
   else if (sp.growth_from) parts.push(`${cap(sp.metric_term)} growth, ${sp.growth_from} to ${sp.growth_to}`);
   else parts.push(`${AGG[sp.aggregation || "sum"]} ${sp.metric_term || ""}`.trim());
+  for (const f of sp.filters || []) parts.push(`${label(f.column.split(".").pop())} = ${f.value}`);
   if (sp.group_by) parts.push(`by ${label(sp.group_by.split(".").pop())}`);
   if (sp.time_grain) parts.push(`per ${sp.time_grain}`);
   if (sp.top_n) parts.push(sp.top_n === 1 ? (sp.order === "asc" ? "lowest" : "highest") : `${sp.order === "asc" ? "bottom" : "top"} ${sp.top_n}`);
