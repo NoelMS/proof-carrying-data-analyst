@@ -4,6 +4,7 @@ import { closeDrawer, initDrawer } from "./components.js";
 import { arrow, fmtInt, h } from "./dom.js";
 import { initScrollEffects, reducedMotion, transition } from "./motion.js";
 import { store, subscribe, update } from "./state.js";
+import { OPTIONS, askOnOpen, openModePicker } from "./views/agent.js";
 import { renderAnalysis } from "./views/analysis.js";
 import { renderDataList, renderDataset } from "./views/data.js";
 import { renderHistory } from "./views/history.js";
@@ -79,7 +80,12 @@ function renderSidebar(s) {
     class: `sidebar__item${truncate ? " sidebar__item--truncate" : ""}`, href, title,
     "aria-current": decodeURIComponent(href) === here ? "page" : null },
     h("span", {}, left), right != null && h("span", { class: "num" }, right)));
+  const mode = OPTIONS[s.status?.mode];
   sidebar.replaceChildren(
+    group("Answered by", h("button", { type: "button", class: "sidebar__item sidebar__mode", id: "sidebar-mode",
+      title: mode ? `${mode.text} Click to change.` : "Choose how questions are answered", onclick: openModePicker },
+      h("span", { class: "sidebar__mode-name" }, mode?.title || "Choose…"),
+      h("span", { class: "sidebar__mode-sub" }, mode ? mode.sub : "How questions are answered"))),
     group(`Data · ${WORKSPACES[s.datasets?.workspace] || WORKSPACES.demonstration}`, s.datasets
       ? h("ul", { class: "sidebar__list" }, s.datasets.tables.map((t) => item(`#/data/${encodeURIComponent(t.name)}`, t.name, fmtInt(t.rows))))
       : h("p", { class: "meta" }, s.connection === "lost" ? "Unavailable" : "Loading")),
@@ -92,7 +98,6 @@ function renderSidebar(s) {
     group("System", s.status
       ? h("ul", { class: "sidebar__list" },
           item("#/system", "Sandbox", s.status.sandbox.ready ? "ready" : "error"),
-          item("#/system", "Agent", { local: "local model", none: "predefined rules" }[s.status.mode] || "—"),
           item("#/quality", "Data issues", s.datasets ? String(s.datasets.issues.length) : "—"))
       : h("p", { class: "meta" }, "—")),
   );
@@ -126,11 +131,12 @@ function initShortcuts() {
 function intro() {
   let seen = true;
   try { seen = sessionStorage.getItem("pcda-intro") === "1"; sessionStorage.setItem("pcda-intro", "1"); } catch { /* storage unavailable */ }
-  if (seen || reducedMotion()) return;
+  if (seen || reducedMotion()) return false;
   const el = document.getElementById("intro");
   el.hidden = false;
   setTimeout(() => el.classList.add("is-leaving"), 2500);
   setTimeout(() => { el.hidden = true; }, 3000);
+  return true;
 }
 
 /* ---------------------------------------------------------------- theme (dark by default) */
@@ -165,7 +171,7 @@ subscribe((s) => {
   if (changed) { current = null; route({ animate: false }); }
 });
 
-intro();
+askOnOpen(intro() ? 3100 : 400);  // the answering choice follows the intro
 initTheme();
 initDrawer();
 initShortcuts();

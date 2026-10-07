@@ -1,6 +1,5 @@
 // Analytical workspace landing: the question surface and the data it can draw on.
 import { ConnectionError, WORKSPACES, api } from "../api.js";
-import { renderAgent } from "./agent.js";
 import { connectionLost } from "../components.js";
 import { arrow, fmtInt, h, pad, setTitle } from "../dom.js";
 import { reveal } from "../motion.js";
@@ -17,9 +16,7 @@ export function renderHome(main) {
   const claim = h("input", { id: "claim", name: "claim", type: "text", inputmode: "decimal", autocomplete: "off", placeholder: "optional" });
   const error = h("p", { class: "command__error", id: "question-error", "aria-live": "polite" });
   const submit = h("button", { class: "btn btn--primary", type: "submit" }, "Analyze question ", arrow());
-  const answeredBy = h("div", { class: "command__mode" });
   const form = h("form", { class: "command", novalidate: true },
-    answeredBy,
     h("label", { class: "command__label eyebrow", for: "question" }, "Ask an analytical question"),
     input, error,
     h("div", { class: "command__foot" },
@@ -70,7 +67,6 @@ export function renderHome(main) {
         h("span", { class: "title--muted" }, "We find the evidence, execute the calculation, and verify the result."))),
     form,
     h("div", { class: "two-col section" }, dataCol, exampleCol)));
-  renderAgent(answeredBy);
 
   renderData(dataCol, store.datasets);
   api.examples().then((ex) => renderExamples(exampleCol, ex, input)).catch(() => {});

@@ -65,7 +65,7 @@ export function renderSystem(main) {
       h("div", { class: "section__head" }, h("h2", { class: "eyebrow" }, "Benchmark"), h("span", { class: "meta" }, "Labelled questions with independently computed answers")),
       bench)));
   renderBench(bench, s);
-  renderAgent(agent, { details: true });
+  renderAgent(agent);
 }
 
 const BENCH_STAGES = ["interpret", "assess", "plan", "generate", "execute", "verify", "reproduce"];

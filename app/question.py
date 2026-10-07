@@ -85,18 +85,45 @@ def column_candidates(phrase: str, base: str | None, tables: dict, prefer_name=T
         return []
     last, qual = words[-1], (words[0] if len(words) > 1 else None)
     joined = "_".join(words)
+    plain = len(words) > 1 and not set(words) & (DESC_WORDS | ASC_WORDS)  # 'highest rate' is not 'HR'
+    initials = "".join(w[0] for w in words) if plain else None
     candidates = []
     for t, df in tables.items():
         for c in df.columns:
-            cl = c.lower()
-            if cl not in (last, joined, f"{last}_name", f"{last}_id", f"{joined}_id") and singular(cl) not in (last, joined):
+            cl, cw = c.lower(), col_words(c)
+            cn = "_".join(cw)  # 'ChestPain' -> 'chest_pain'
+            acronym = initials is not None and initials in abbreviations(c)  # 'heart rate' -> the HR in MaxHR
+            if cl not in (last, joined, f"{last}_name", f"{last}_id", f"{joined}_id") and singular(cl) not in (last, joined) \
+                    and cn != joined and singular(cn) != joined and not acronym:
                 continue
-            if qual and singular(t) != qual and not cl.startswith(qual) and t != base:
+            if qual and not acronym and singular(t) != qual and not cl.startswith(qual) and t != base:
                 continue
             rank = (t != base or not cl.endswith("_id") or not prefer_name,
-                    0 if cl.endswith("_name") else 1 if cl in (last, joined) else 2)
+                    0 if cl.endswith("_name") else 1 if cl in (last, joined) or cn == joined else 3 if acronym else 2)
             candidates.append((rank, f"{t}.{c}"))
     return sorted(candidates)
+
+
+def col_words(name: str) -> list[str]:
+    """The words of a column name, also split at case changes: 'MaxHR' -> ['max', 'hr'], 'order_id' -> ['order', 'id']."""
+    return [w.lower() for w in re.findall(r"[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|\d+", name)]
+
+
+def abbreviations(name: str) -> set[str]:
+    """Capitalised abbreviations in a column name ('MaxHR' -> {'hr'}); ordinary words never count."""
+    return {w.lower() for w in re.findall(r"[A-Z]{2,}(?![a-z])", name)}
+
+
+def acronym_words(tokens: list[str], column: str) -> set[str]:
+    """Question words whose initials spell a word of `column` ('heart rate' for the 'HR' in MaxHR)."""
+    abbrevs = abbreviations(column)
+    out = set()
+    for n in (2, 3):
+        for i in range(len(tokens) - n + 1):
+            span = tokens[i:i + n]
+            if "".join(w[0] for w in span) in abbrevs and not set(span) & (DESC_WORDS | ASC_WORDS):
+                out |= set(span)
+    return out
 
 
 def _date_column(table: str, profiles: dict[str, TableProfile], ql: str = "", notes: list | None = None) -> str | None:
@@ -290,8 +317,9 @@ def _is_measure(col: str, profiles: dict) -> bool:
 
 def _numeric_column(ql: str, tables: dict, profiles: dict):
     """A numeric column named anywhere in the question, for data without metric definitions."""
-    words = [w for w in re.findall(r"[a-z_]+", ql) if w not in FILLER and w not in DESC_WORDS | ASC_WORDS]
-    for phrase in [" ".join(words[i:i + 2]) for i in range(len(words) - 1)] + words:
+    every = [w for w in re.findall(r"[a-z_]+", ql) if w not in FILLER]  # pairs keep 'max' for a column like MaxHR
+    words = [w for w in every if w not in DESC_WORDS | ASC_WORDS]
+    for phrase in [" ".join(every[i:i + 2]) for i in range(len(every) - 1)] + words:
         col = resolve_column(phrase, None, tables, prefer_name=False)
         if col and _is_measure(col, profiles):
             return phrase, col
@@ -544,7 +572,7 @@ def ground(question: str, spec: QuerySpec, tables: dict, profiles: dict, metrics
 
 
 def _name_words(name: str) -> set[str]:
-    words = set(_tokens(name.replace("_", " ")))
+    words = set(_tokens(name.replace("_", " "))) | set(col_words(name))
     return words | {singular(w) for w in words}
 
 
@@ -566,6 +594,8 @@ def unexplained_terms(question: str, spec: QuerySpec, tables: dict, profiles: di
         data |= _name_words(t or "")
     for r in filter(None, refs):
         data |= _name_words(r.split(".", 1)[-1])  # a model may omit the table
+    for c in [r.split(".", 1)[-1] for r in filter(None, refs)] + [spec.measure or ""]:
+        data |= acronym_words(_tokens(ql), c)  # 'heart rate' names MaxHR only by its initials
     if spec.measure:
         data |= _name_words(spec.measure)
         if spec.table in tables and (unit_col := unit_column_for(tables[spec.table], spec.measure)):

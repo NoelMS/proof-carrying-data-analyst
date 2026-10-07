@@ -108,3 +108,29 @@ def test_superlative_without_a_group_is_a_max_or_min(make_catalog, q, agg, value
     st = Analyst(cat, CFG).run(q)
     assert st.verified, st.final.get("reason")
     assert normalize(st.final["numeric_value"]) == normalize(value)
+
+
+HEART_CAMEL = """id,MaxHR,RestBP,ChestPain
+1,150,145,typical
+2,108,160,asymptomatic
+3,202,130,typical
+"""
+
+
+@pytest.mark.parametrize("q,measure,agg,value", [
+    ("What is the highest heart rate", "MaxHR", "max", "202"),  # 'heart rate' -> the HR abbreviation
+    ("lowest max hr", "MaxHR", "min", "108"),  # CamelCase names split into words
+    ("average resting blood pressure", "RestBP", "mean", "145.00"),
+])
+def test_camel_case_and_abbreviated_columns(make_catalog, q, measure, agg, value):
+    cat = make_catalog({"heart": HEART_CAMEL})
+    s = spec(cat, q)
+    assert (s.measure, s.aggregation) == (measure, agg), s
+    st = Analyst(cat, CFG).run(q)
+    assert st.verified and normalize(st.final["numeric_value"]) == normalize(value), st.final
+
+
+@pytest.mark.parametrize("q", ["highest rate", "DROP TABLE heart;"])
+def test_initials_never_come_from_superlatives_or_plain_words(make_catalog, q):
+    cat = make_catalog({"heart": HEART_CAMEL})
+    assert not Analyst(cat, CFG).run(q).verified

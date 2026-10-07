@@ -122,7 +122,7 @@ Two modes decide who reads the question and writes the proof. The verification b
 
 With the local model, the code template is a safety net: if the model's attempts all fail verification (or the model is unreachable), one last attempt uses the template. The answer shows who wrote the proof that passed (local model or predefined rules). Drafts that failed verification are not shown; they are kept in `logs/pcda.jsonl`. A refusal still shows the failed check it rests on.
 
-**Choosing a mode.** The question form starts with an **Answered by** switch: *Local model* or *Predefined rules*. Hovering, focusing or selecting an option describes it. The choice is remembered (`.pcda/mode`) and is also on the System page. Selecting *Local model* before it is installed offers to install it:
+**Choosing a mode.** When the app opens, a popup asks how questions should be answered: *Local model* or *Predefined rules*. Hovering, focusing or selecting an option describes it. After the choice, the popup minimizes into the **Answered by** item at the top of the sidebar; click it to choose again. The choice is remembered (`.pcda/mode`) and is also on the System page. Selecting *Local model* before it is installed offers to install it:
 1. uses Ollama if it is running, or starts it if it is installed;
 2. otherwise installs Ollama with the platform package manager (winget on Windows, Homebrew on macOS). Where neither exists (for example Linux), the app links to https://ollama.com/download instead of running an install script;
 3. downloads the model through Ollama, with progress, and switches to the local model without a restart.
@@ -150,7 +150,7 @@ Values are read from the environment, then from `.env`. Real environment variabl
 
 **With predefined rules (`none`)**, questions are interpreted by a deterministic parser. It handles totals, averages, medians, the largest or smallest single value ("oldest age", "highest chol"), counts, distinct counts, rates, growth between two years, top-N and bottom-N, grouping by a column (joined through many-to-one relationships), monthly or yearly grain, date ranges, and a reporting currency. Proof code comes from templates.
 
-Questions don't need exact phrasing. For example, "region with high revenue usd" reads as total revenue in USD by region, highest one. The parser understands:
+Column names are read as words, including CamelCase (`MaxHR` is *max hr*, `ChestPain` is *chest pain*), and a phrase whose initials spell a capitalised abbreviation names that column ("heart rate" for the HR in `MaxHR`, "blood pressure" for `RestBP`). Questions don't need exact phrasing. For example, "region with high revenue usd" reads as total revenue in USD by region, highest one. The parser understands:
 - **Currencies:** ISO codes (`usd`) and unambiguous names (`euros`, `yen`, `dong`), anywhere in the question.
 - **Highest and lowest:** "highest / most / top / best" and "lowest / least / bottom / worst".
 - **Entities without "by":** "which region â€¦", "which carrier shipped the most".
@@ -248,7 +248,7 @@ Exact duplicate rows (identical in every field, including the record ID) are cou
 python -m pytest -q
 ```
 
-The suite (212 tests) covers:
+The suite (217 tests) covers:
 - ingestion: malformed, empty or corrupted files, encodings, hostile column names
 - profiling and trap detection
 - sandbox isolation: environment secrets, subprocess, file reads and writes, network, ctypes, timeout, memory
