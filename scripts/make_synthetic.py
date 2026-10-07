@@ -126,6 +126,14 @@ def main():
         ("How many orders from Europe?", sum(region_name[cust_region[o[1]]] == "Europe" for o in orders)),
         ("Which month had the highest revenue in USD?", [[best_month[0], q(best_month[1])]]),
         ("What is the average quantity?", q(Decimal(sum(int(o[4]) for o in orders)) / len(orders))),
+        # synonyms, thresholds, quarters, shares, period comparisons
+        ("How many clients do we have?", 60),
+        ("How many orders were placed in Q1 2024?", sum("2024-01-01" <= o[3] <= "2024-03-31" for o in orders)),
+        ("What is the revenue in USD for orders over 1000?", q(sum((usd(o) for o in orders if usd(o) > 1000), Decimal(0)))),
+        ("What percentage of revenue in USD comes from the web channel?",
+         q(sum((usd(o) for o in orders if o[8] == "web"), Decimal(0)) / total, RATE_Q)),
+        ("What is the revenue in USD in Q1 2024 vs Q1 2023?",
+         {f"{y}-Q1": q(sum((usd(o) for o in orders if f"{y}-01-01" <= o[3] <= f"{y}-03-31"), Decimal(0))) for y in (2023, 2024)}),
         # questions that must be refused, with the reason they must be refused for
         ("What is the total revenue?", None, "AMBIGUOUS"),  # three currencies, none requested
         ("What is the total revenue in JPY?", None, "INSUFFICIENT_DATA"),  # no JPY rate
@@ -147,10 +155,10 @@ def main():
         # a dropped qualifier would give a confident wrong number: these must be refused, never half-answered
         ("How many orders were cancelled?", None, "INSUFFICIENT_DATA"),  # no cancellation data
         ("What is the total revenue in USD excluding refunds?", None, "INSUFFICIENT_DATA"),  # no refund data
-        ("How many orders were placed in Q1 2024?", None, "INSUFFICIENT_DATA"),  # quarters not understood
         ("What is the total revenue in USD in 2023 and 2024?", None, "UNSUPPORTED_OPERATION"),  # two periods
         ("Is revenue in USD higher in 2024 than 2023?", None, "UNSUPPORTED_OPERATION"),  # a comparison
-        ("What was the revenue in USD last month?", None, "UNSUPPORTED_OPERATION"),  # relative period
+        ("What was the revenue in USD last month?", None, "AMBIGUOUS"),  # relative to a date the data does not fix
+        ("How many orders over 1000?", None, "AMBIGUOUS"),  # amounts in three currencies: 1000 of which?
         ("What is the revenue in USD from web or partner?", None, "UNSUPPORTED_OPERATION"),  # OR condition
         ("What is the total amount paid in USD?", None, "AMBIGUOUS"),  # orders.amount or payments.amount
         ("What is the total payment amount in USD?", None, "AMBIGUOUS"),  # completed, failed and pending mixed

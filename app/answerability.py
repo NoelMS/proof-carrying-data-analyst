@@ -70,8 +70,7 @@ def _join_path(cat: Catalog, base: str, target: str) -> list[tuple[str, str, str
 
 
 def _check_refs(spec: QuerySpec, cat: Catalog, a: Assessment) -> bool:
-    refs = [spec.group_by, spec.date_column] + [f.column for f in spec.filters]
-    refs += [spec.ratio_filter.column] if spec.ratio_filter else []
+    refs = spec.refs()
     if spec.table not in cat.tables:
         a.block(INSUFFICIENT, f"Table '{spec.table}' does not exist in the data.")
         return False
@@ -108,6 +107,12 @@ def assess(spec: QuerySpec, cat: Catalog) -> Assessment:
         a.block(UNSUPPORTED, "Grouped rates and growth rates are not supported; ask for one figure at a time.")
     if spec.top_n and not (spec.group_by or spec.time_grain):
         a.block(UNSUPPORTED, "A top-N ranking needs an entity to rank (for example 'top 5 products').")
+    if spec.kind in ("share", "anti") and (spec.group_by or spec.time_grain or spec.top_n or spec.periods):
+        a.block(UNSUPPORTED, "A share or a 'with no ...' count is answered as one figure; grouping it is not supported.")
+    if spec.without and (spec.filters or spec.date_from):
+        a.block(UNSUPPORTED, "A 'with no ...' count with further conditions is not supported; ask without them.")
+    if spec.periods and (spec.group_by or spec.time_grain or spec.top_n):
+        a.block(UNSUPPORTED, "Comparing two periods is answered per period only; drop the grouping or the ranking.")
     if spec.group_by and spec.time_grain:
         a.block(UNSUPPORTED, "Grouping by both a dimension and a time grain is not supported.")
     if spec.aggregation in ("count", "count_distinct") and spec.currency:
@@ -116,7 +121,7 @@ def assess(spec: QuerySpec, cat: Catalog) -> Assessment:
         return a
 
     # joins needed for grouping / filtering on other tables
-    for ref in filter(None, [spec.group_by, spec.date_column] + [f.column for f in spec.filters]):
+    for ref in spec.refs():
         t, _ = _split(ref)
         if t in a.tables:
             continue
@@ -130,12 +135,28 @@ def assess(spec: QuerySpec, cat: Catalog) -> Assessment:
                 a.tables.append(step[2])
 
     # labels that may name the same thing ('EU' / 'Europe') would split or miss a group
-    for ref in filter(None, [spec.group_by] + [f.column for f in spec.filters]):
+    for ref in [r for r in spec.refs() if r != spec.date_column]:
         t, c = _split(ref)
         for issue in cat.issues:
             if issue.kind == "label_variants" and issue.table == t and issue.column == c:
                 a.block(AMBIGUOUS, f"{t}.{c}: {issue.detail[:-1]}. Grouping or filtering on it would treat them as "
                                    "different; merge them first if they are the same.")
+
+    # a threshold on amounts in several currencies only means something after converting each record
+    cur_col = currency_column(cat.tables[base])
+    mixed = cur_col and len(set(cat.tables[base][cur_col]) - {""}) > 1
+    for f in spec.filters:
+        t, c = _split(f.column)
+        if f.op in (">", ">=", "<", "<=") and cat.profiles[t].columns[c].kind not in ("integer", "decimal"):
+            a.block(UNSUPPORTED, f"{t}.{c} is not numeric, so '{f.op} {f.value}' cannot be compared.")
+            continue
+        if f.op in (">", ">=", "<", "<=") and t == base and mixed and is_money(c):
+            if c == spec.measure and spec.currency and spec.aggregation in ("sum", "mean", "median", "max", "min"):
+                f.convert = True  # compared in the reporting currency, per record
+            else:
+                a.block(AMBIGUOUS, f"{base}.{c} is in several currencies ({', '.join(sorted(set(cat.tables[base][cur_col]) - {''}))}),"
+                                   f" so '{f.op} {f.value}' compares different money; ask for the {c} in a currency "
+                                   f"(for example 'total {c} in USD for {base} over {f.value}').")
 
     # record integrity of every table used
     for t in a.tables:
@@ -191,8 +212,25 @@ def assess(spec: QuerySpec, cat: Catalog) -> Assessment:
     for issue in cat.issues_for(a.tables):
         if issue.kind in ("prompt_injection", "temporal_contradiction", "negative_values", "derived_table", "normalized"):
             a.diagnostics.append(f"{issue.table}.{issue.column or ''}: {issue.detail}".replace(".:", ":"))
-    if spec.kind in ("ratio", "growth"):
+    if spec.without and spec.without not in a.tables:
+        a.tables.append(spec.without)
+    for ref in spec.date_diff:
+        t, c = _split(ref)
+        cp = cat.profiles[t].columns[c]
+        if cp.date_format not in ("iso", None) or cp.kind not in ("date", "datetime"):
+            a.block(AMBIGUOUS, f"{ref} is not stored as unambiguous ISO dates; day counts would be guesses.")
+        elif cp.nulls:
+            a.block(INSUFFICIENT, f"{ref} is missing for {cp.nulls} row(s); their durations are unknown.")
+    if spec.date_diff:
+        a.unit = "days"
+        for issue in cat.issues:  # a payment dated before its order: a duration across them is contradictory
+            if issue.kind == "temporal_contradiction" and f"{issue.table}.{issue.column}" in spec.date_diff:
+                a.block(CONTRADICTORY, f"{issue.table}.{issue.column}: {issue.detail} Durations between these dates "
+                                       "would include impossible negative values.")
+    if spec.kind in ("ratio", "growth", "share"):
         a.precision = 4
+    elif spec.date_diff:
+        a.precision = 2 if spec.aggregation in ("mean", "median") else 0
     elif spec.aggregation in ("count", "count_distinct"):
         a.precision = 0
     return a
@@ -234,6 +272,8 @@ def _check_measure(spec: QuerySpec, cat: Catalog, a: Assessment):
 
 
 def _check_currency(spec: QuerySpec, cat: Catalog, a: Assessment):
+    if spec.date_diff:
+        return  # days have no currency
     if spec.aggregation not in ("sum", "mean", "median", "max", "min") or spec.kind == "ratio":
         return
     if spec.measure and not is_money(spec.measure):  # quantities, weights: currencies do not apply

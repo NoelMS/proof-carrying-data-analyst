@@ -97,7 +97,12 @@ def _precision_ok(plan: Plan, result: Any) -> str | None:
 
 def _hardcoded(code: str, result: Any) -> str | None:
     consts = set()
-    for node in ast.walk(ast.parse(code)):
+    tree = ast.parse(code)
+    positions = {id(x) for s in ast.walk(tree) if isinstance(s, ast.Slice)  # d[:10] cuts text; it is no value
+                 for x in (s.lower, s.upper, s.step) if x is not None}
+    for node in ast.walk(tree):
+        if id(node) in positions:
+            continue
         if isinstance(node, ast.Constant) and isinstance(node.value, (int, float, str)) and not isinstance(node.value, bool):
             n = normalize(node.value)
             if isinstance(n, Decimal):

@@ -57,6 +57,33 @@ def _replace(q: str, word: str, new: str) -> str:
     return _tidy(re.sub(rf"\b{re.escape(word)}\b", new, q, count=1, flags=re.I))
 
 
+def _replace_phrase(q: str, phrase: str, new: str) -> str:
+    return _tidy(re.sub(re.escape(phrase), new, q, count=1, flags=re.I))
+
+
+def _latest_period(phrase: str, spec: QuerySpec, cat: Catalog) -> str | None:
+    """The most recent complete month / quarter / year in the table the question is about."""
+    import calendar
+    p = cat.profiles.get(spec.table or "")
+    dates = [cp.max for cp in (p.columns.values() if p else []) if cp.kind in ("date", "datetime") and cp.max]
+    if not dates:
+        return None
+    y, mo = int(max(dates)[:4]), int(max(dates)[5:7])
+    unit = next((u for u in ("quarter", "month", "year") if u in phrase.lower()), "year")
+    back = 1 if re.search(r"last|previous|past|prior", phrase.lower()) else 0
+    if unit == "month":
+        mo -= back
+        if mo == 0:
+            y, mo = y - 1, 12
+        return f"in {calendar.month_name[mo]} {y}"
+    if unit == "quarter":
+        qn = (mo - 1) // 3 + 1 - back
+        if qn == 0:
+            y, qn = y - 1, 4
+        return f"in Q{qn} {y}"
+    return f"in {y - back}"
+
+
 def rate_targets(cat: Catalog) -> list[str]:
     """Currencies the data can convert into (columns like rate_to_usd)."""
     return sorted({m.group(1).upper() for df in cat.tables.values() for c in df.columns
@@ -83,6 +110,10 @@ def _candidates(q: str, spec: QuerySpec, a: Assessment, cat: Catalog) -> list[tu
                 for t in rate_targets(cat)]
         if spec.table:
             out.append((_append(q, f"by {singular(spec.table)} currency"), "one figure per currency, nothing converted"))
+
+    for msg in spec.ambiguities:  # 'last quarter': offer the latest such period in the data
+        if (m := re.match(r"'(.+?)' depends on today's date", msg)) and (period := _latest_period(m.group(1), spec, cat)):
+            out.append((_replace_phrase(q, m.group(1), period), f"'{m.group(1)}' read as {period}, the latest in the data"))
 
     if m := re.search(r"no exchange rates to ([A-Z]{3})", reasons):  # 'in INR' with no INR rate: offer what exists
         code = m.group(1)

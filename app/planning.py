@@ -23,11 +23,11 @@ class Plan:
 
     @property
     def output(self) -> str:
-        return {"ranking": "ranking", "grouped": "mapping"}.get(self.spec.kind, "scalar")
+        return {"ranking": "ranking", "grouped": "mapping"}.get(self.spec.kind, "scalar")  # share, anti: one figure
 
     @property
     def integer_result(self) -> bool:
-        return self.spec.aggregation in ("count", "count_distinct") and self.spec.kind not in ("ratio", "growth")
+        return self.spec.aggregation in ("count", "count_distinct") and self.spec.kind not in ("ratio", "growth", "share")
 
     def output_contract(self) -> str:
         fmt = "integer" if self.integer_result else f"decimal string with exactly {self.precision} decimal places"
@@ -52,9 +52,7 @@ def _ref_desc(base: str, ref: str) -> str:
 
 def build_plan(question: str, spec: QuerySpec, a: Assessment, cat: Catalog) -> Plan:
     base = spec.table
-    refs = [r for r in [spec.group_by, spec.date_column] + [f.column for f in spec.filters] if r]
-    refs += [spec.ratio_filter.column] if spec.ratio_filter else []
-    refs += [f"{base}.{spec.measure}"] if spec.measure else []
+    refs = spec.refs() + ([f"{base}.{spec.measure}"] if spec.measure else [])
     kinds = {r: cat.profiles[r.split(".")[0]].columns[r.split(".", 1)[1]].kind for r in refs}
     p = Plan(question, spec, base, a.tables, a.dedupe, a.joins, a.currency, a.unit, a.precision, kinds)
     p.columns = {t: list(cat.tables[t].columns) for t in a.tables}
@@ -65,19 +63,26 @@ def build_plan(question: str, spec: QuerySpec, a: Assessment, cat: Catalog) -> P
         s.append(f"Left-join {child} to {parent} on {col}; assert {parent}.{col} is unique (many-to-one) "
                  "and every row finds a match.")
     for f in spec.filters:
-        s.append(f"Keep rows where {f.column} {f.op} {f.value!r}.")
+        s.append(f"Keep rows where {f.column}{' converted to ' + spec.currency if f.convert else ''} {f.op} {f.value!r}.")
     if spec.date_from:
         s.append(f"Keep rows where {spec.date_column} (ISO date) is between {spec.date_from} and {spec.date_to} inclusive.")
     if spec.growth_from:
         s.append(f"Use the year of {spec.date_column}; compare {spec.growth_from} with {spec.growth_to}.")
     measure = f"{base}.{spec.measure}" if spec.measure else None
-    if a.currency:
+    if spec.date_diff:
+        s.append(f"Value = calendar days from {spec.date_diff[0]} to {spec.date_diff[1]} (first 10 characters, ISO).")
+    elif a.currency:
         c = a.currency
         s.append(f"Value = Decimal({measure}) x Decimal({c['rates_table']}.{c['rate_column']}) looked up by "
                  f"{base}.{c['source_column']} = {c['rates_table']}.{c['rates_key']}; assert every currency has a rate.")
     elif measure and spec.aggregation in ("sum", "mean", "median", "max", "min"):
         s.append(f"Value = Decimal({measure}).")
-    if spec.ratio_filter:
+    if spec.without:
+        s.append(f"Count distinct {base}.{spec.measure} (non-empty) that appear in no {spec.without}.{spec.measure} value.")
+    elif spec.share_filter:
+        f = spec.share_filter
+        s.append(f"Share = (sum of value where {f.column} {f.op} {f.value!r}) / (sum of all values); assert the total is non-zero.")
+    elif spec.ratio_filter:
         f = spec.ratio_filter
         s.append(f"Rate = (rows where {f.column} {f.op} {f.value!r}) / (all rows); assert there is at least one row.")
     elif spec.growth_from:
@@ -88,6 +93,11 @@ def build_plan(question: str, spec: QuerySpec, a: Assessment, cat: Catalog) -> P
                "count": "Count of rows", "count_distinct": f"Count of distinct {measure}"}[spec.aggregation]
         if spec.group_by:
             agg += f" per {_ref_desc(base, spec.group_by)}"
+            if spec.group_by2:
+                agg += f" and {_ref_desc(base, spec.group_by2)} (key 'A · B')"
+        elif spec.periods:
+            agg += (f" per period of {spec.date_column} ({'YYYY-Qn' if 'Q' in spec.periods[0] else 'YYYY-MM' if len(spec.periods[0]) == 7 else 'YYYY'}),"
+                    f" reported for {spec.periods[0]} and {spec.periods[1]}; assert both have rows")
         elif spec.time_grain:
             agg += f" per {spec.time_grain} of {spec.date_column} ({'YYYY-MM' if spec.time_grain == 'month' else 'YYYY'})"
         if spec.top_n:
