@@ -1,7 +1,8 @@
 """One-click start: runs the server without a console window and opens the app in its own window.
 
-Closing the app window stops the server. Use the desktop shortcut created by
-`python scripts/create_shortcut.py`, or double-click this file.
+Closing the app window stops the server. On a fresh clone, double-click `Proof-Carrying Data Analyst.cmd`
+(or this file): the first start creates `.venv`, installs the requirements with a progress window, and
+adds Desktop and Start-menu shortcuts. Later starts check the requirements and install anything missing.
 """
 import os
 import shutil
@@ -38,6 +39,9 @@ def alert(message: str):
 
 
 def main():
+    from app.bootstrap import ensure_environment  # standard library only
+    if not ensure_environment(sys.argv):
+        return
     try:
         from app.api import create_server
         server = create_server(port=0)
