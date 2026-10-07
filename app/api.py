@@ -236,7 +236,7 @@ class App:
     # ---------------------------------------------------------------- analyses
     def start(self, question: str, claim) -> str:
         cat = self.catalog
-        analyst = Analyst(cat, self.cfg)
+        analyst = Analyst(cat, self.cfg, suggest_fixes=True)
         run = Run(catalog=cat)
         rid = uuid.uuid4().hex[:12]
         self.runs[rid] = run

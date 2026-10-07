@@ -3,9 +3,10 @@
 import { ApiError, ConnectionError, api, streamAnalysis } from "../api.js";
 import { barChart } from "../charts.js";
 import { announce, codeBlock, connectionLost, copyText, facts, marker, openDrawer, table, toast } from "../components.js";
-import { arrow, fmtInt, h, label, pad, setTitle } from "../dom.js";
+import { append, arrow, fmtInt, h, label, pad, setTitle } from "../dom.js";
 import { animateNumber, enter, reveal, swap } from "../motion.js";
 import { store, update } from "../state.js";
+import { openFixDrawer } from "./fixes.js";
 
 const ORDER = ["interpret", "assess", "plan", "generate", "execute", "verify"];
 const WORK = {
@@ -184,7 +185,8 @@ function renderLeft(s, slots, filled) {
   const once = (name, slot, build) => {
     const content = build();
     if (!content) return;
-    slot.replaceChildren(...[content].flat());
+    slot.replaceChildren();
+    append(slot, content);
     if (!filled.has(name)) { reveal(slot); filled.add(name); }
   };
   once("interp", slots.interp, () => s.spec && [
@@ -342,11 +344,31 @@ function refusedStage(s) {
       h("p", { class: "eyebrow" }, "Why"),
       f.also?.map((r) => h("p", {}, r)),
       failed && comparison(failed.verification, s.claimed_value)),
+    f.fixes?.length > 0 && unblockers(f.fixes),
     h("p", { class: "refusal__end" }, "No verified result produced."),
     h("div", { class: "btn-row", style: { "margin-top": "var(--space-6)" } },
       h("a", { class: "btn btn--primary", href: "#/" }, "Ask another question ", arrow()),
       askAgain(s),
       h("button", { class: "btn btn--secondary", type: "button", onclick: () => diagnostics(s) }, "Diagnostics ", arrow())));
+}
+
+/** Data fixes that, tried on a copy of the data, would make the question answerable or clear a reason. */
+function unblockers(suggestions) {
+  const byFix = new Map();
+  suggestions.forEach((x) => byFix.set(x.fix.id, [...(byFix.get(x.fix.id) || []), x]));
+  return h("div", { class: "refusal__why", style: { "margin-top": "var(--space-5)" } },
+    h("p", { class: "eyebrow" }, "What would make this answerable"),
+    h("p", { class: "meta" }, "Each fix was tried on a copy of the data. Nothing has been changed; you preview a fix before applying it, then run the question again."),
+    [...byFix.values()].map((xs) => {
+      const opt = xs[0].fix;
+      const pick = xs.find((x) => x.answerable) || xs[0];
+      return h("div", { style: { "margin-top": "var(--space-4)" } },
+        h("p", {}, h("strong", {}, opt.title), " ", h("span", { class: "meta" }, `· ${opt.table}${opt.column ? "." + opt.column : ""}`)),
+        xs.map((x) => h("p", { class: "meta" }, `${x.choice_label ? x.choice_label + ": " : ""}`
+          + (x.answerable ? "the question becomes answerable." : `clears one reason; still blocked by: ${x.remaining}`))),
+        h("button", { class: "btn btn--secondary story__fix", type: "button", onclick: () => openFixDrawer(opt, pick.choice) },
+          "Review this fix ", arrow()));
+    }));
 }
 
 /** Start a fresh analysis of the same question (and claim) against the current data. */

@@ -72,6 +72,12 @@ class Schema:
         self.rels.append(f"{child}.{col} -> {parent}.{col}")
         return col
 
+    def date_of(self, table):
+        """The date a rate on `table` is filtered by: the fact date, else that table's own date column."""
+        if table == self.fact:
+            return self.date
+        return next(c for c, d in self.tables[table]["columns"].items() if d["type"] in ("date", "datetime"))
+
     def summary(self):
         return {"tables": self.tables, "relationships": self.rels, "metric_definitions": self.metrics}
 
@@ -342,8 +348,8 @@ def measure_choice(rng, s: Schema, spec: QuerySpec):
         spec.metric_term, spec.table, spec.measure = name, d["table"], d["column"]
         spec.aggregation = d.get("aggregation", "sum")
         r = rng.random()
-        if any(w in word for w in ("average", "mean", "rate")):
-            return word, word
+        if spec.aggregation != "sum" or any(w in word for w in ("average", "mean", "rate")):
+            return word, word  # "total order value" would contradict a metric defined as a mean
         if r < 0.25:
             return f"total {word}", word
         if r < 0.4:
@@ -393,7 +399,7 @@ def make_example(rng, s: Schema, frames: dict):
         spec.ratio_filter = Filter(column=f"{d['table']}.{rf['column']}", op=rf["op"], value=rf["value"])
         date = date_phrase(rng, spec)
         if date:
-            spec.date_column = f"{s.fact}.{s.date}"
+            spec.date_column = f"{d['table']}.{s.date_of(d['table'])}"
         return fill(pick(rng, frames["ratio"]), spec, r=word, date=date), spec
 
     if intent in ("count", "count_sup"):
@@ -497,7 +503,8 @@ def noisy(rng, q: str) -> str:
     return q
 
 
-def generate(split: str, n: int, seed: int):
+def generate(split: str, n: int, seed: int, exclude: frozenset = frozenset()):
+    """`exclude`: (schema_id, lowercased question) pairs already used by another split."""
     rng = random.Random(seed)
     frames = FRAMES["heldout" if split == "heldout" else "train"]
     domains = HELDOUT_DOMAINS if split == "heldout" else TRAIN_DOMAINS
@@ -512,7 +519,7 @@ def generate(split: str, n: int, seed: int):
         q, spec = make_example(rng, s, frames)
         q = noisy(rng, q)
         key = (s.id, q)
-        if key in seen:
+        if key in seen or (s.id, q.lower()) in exclude:
             continue
         seen.add(key)
         target = target_json(spec)
@@ -525,9 +532,10 @@ def generate(split: str, n: int, seed: int):
 
 def main():
     OUT.mkdir(exist_ok=True)
-    all_schemas = {}
+    all_schemas, used = {}, frozenset()
     for i, (split, n) in enumerate(SIZES.items()):
-        rows, schemas = generate(split, n, seed=100 + i)
+        rows, schemas = generate(split, n, seed=100 + i, exclude=used)
+        used |= {(r["schema_id"], r["question"].lower()) for r in rows}
         all_schemas.update(schemas)
         with open(OUT / f"{split}.jsonl", "w", encoding="utf-8") as f:
             for r in rows:

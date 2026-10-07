@@ -17,7 +17,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from .catalog import Catalog
+from .answerability import assess
+from .catalog import Catalog, build_catalog
 from .ingestion import Workspace
 from .profiling import SLASH_RE
 from .security import is_instruction_like
@@ -265,6 +266,60 @@ class FixStore:
             (self.root / "snapshots" / f"{e['id']}.csv").unlink(missing_ok=True)
         self._save_log([e for e in entries if e["table"] != table])
         return len(mine)
+
+
+TABLE_FIXES = ("conflicting_records", "orphan_keys")  # exact duplicates never block; assess dedupes them
+
+
+def _relevant(cat: Catalog, spec, opt: FixOption) -> bool:
+    """Only fixes on what the question touches: its columns, the measure's unit, and whole-table fixes on
+    the base table or any table it can join to."""
+    reach, todo = {spec.table}, [spec.table]
+    while todo:
+        t = todo.pop()
+        for r in cat.relationships:
+            if r.child == t and r.parent not in reach:
+                reach.add(r.parent)
+                todo.append(r.parent)
+    if opt.kind in TABLE_FIXES:
+        return opt.table in reach
+    if opt.kind not in ("ambiguous_date", "inconsistent_date_format", "missing_values", "mixed_units"):
+        return False
+    refs = {spec.group_by, spec.date_column, *(f.column for f in spec.filters)}
+    refs |= {spec.ratio_filter.column} if spec.ratio_filter else set()
+    refs |= {f"{spec.table}.{spec.measure}"} if spec.measure else set()
+    if opt.kind == "mixed_units":
+        return opt.table == spec.table and _measure_for_unit(cat.tables[opt.table], opt.column) == spec.measure
+    return f"{opt.table}.{opt.column}" in refs
+
+
+def unblocking_fixes(cat: Catalog, spec) -> list[dict]:
+    """For a refused question, try each relevant proposed fix on a throwaway copy of the catalog and
+    re-assess. Nothing is applied. A fix is listed if it makes the question answerable or clears one of
+    the blocking reasons (then the next one is reported). Filling with a user value is not tried, since
+    that value is the user's decision, not something to guess."""
+    if not spec or not spec.table or spec.table not in cat.tables:
+        return []
+    before = assess(spec, cat)
+    if before.answerable:
+        return []
+    out = []
+    for opt in propose(cat):
+        if not _relevant(cat, spec, opt):
+            continue
+        for c in [x for x in opt.choices if x["value"] != "fill"] or [None]:
+            try:
+                df = transform(cat, opt, c and c["value"], None)
+            except FixError:
+                continue
+            if df.equals(cat.tables[opt.table]):
+                continue
+            ws = Workspace(cat.workspace.root, {**cat.tables, opt.table: df}, cat.metrics)
+            after = assess(spec, build_catalog(ws))
+            if after.answerable or set(before.reasons) - set(after.reasons):
+                out.append({"fix": as_dict(opt), "choice": c and c["value"], "choice_label": c and c["label"],
+                            "answerable": after.answerable, "remaining": None if after.answerable else after.reasons[0]})
+    return sorted(out, key=lambda s: not s["answerable"])
 
 
 def option_by_id(cat: Catalog, fix_id: str) -> FixOption:

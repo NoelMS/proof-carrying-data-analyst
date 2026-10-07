@@ -12,14 +12,14 @@ async function refreshAfter(result, message) {
   toast(message);
 }
 
-export function openFixDrawer(opt) {
+export function openFixDrawer(opt, choice = null) {
   const status = h("p", { class: "meta", "aria-live": "polite" });
   const preview = h("div");
   const name = `fix-${opt.id}`;
   const choices = !opt.choices.length ? null : h("fieldset", { class: "fix-choices", style: { border: "0", padding: "0" } },
     h("legend", { class: "eyebrow", style: { "margin-bottom": "var(--space-2)" } }, "Choose how to fix it"),
     opt.choices.map((c) => h("label", { class: "fix-choice" },
-      h("input", { type: "radio", name, value: c.value }), h("span", {}, c.label))));
+      h("input", { type: "radio", name, value: c.value, checked: c.value === choice }), h("span", {}, c.label))));
   const input = !opt.input ? null : h("input", { class: "field", type: "text", "aria-label": opt.input.label, placeholder: opt.input.label });
   const selected = () => ({
     choice: choices ? choices.querySelector("input:checked")?.value ?? null : null,
