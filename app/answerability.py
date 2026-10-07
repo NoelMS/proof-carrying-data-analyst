@@ -3,12 +3,13 @@
 Every check either resolves a decision from evidence in the data (recorded as a
 diagnostic) or blocks the question with a specific reason. Nothing is assumed.
 """
+import re
 from collections import deque
 from dataclasses import dataclass, field
 
 from .catalog import Catalog
 from .question import QuerySpec
-from .traps import currency_column, unit_column_for
+from .traps import DERIVED_TABLE_RE, currency_column, unit_column_for
 
 ANSWERABLE = "ANSWERABLE"
 AMBIGUOUS = "AMBIGUOUS"
@@ -17,6 +18,10 @@ CONTRADICTORY = "CONTRADICTORY_DATA"
 UNSUPPORTED = "UNSUPPORTED_OPERATION"
 MINOR_UNITS = {"JPY": 0, "KRW": 0}  # ISO 4217 exponents that differ from 2
 MAX_SOURCE_DECIMALS = 6
+MEAN_MIN_DECIMALS = 2  # an average of whole numbers is rarely whole; rounding it to 0 places would hide that
+MONEY_RE = re.compile(r"amount|price|revenue|cost|sales|spend|fee|paid|payment|income|profit|margin|balance|tax|"
+                      r"discount|value|total|salary|wage|charge|refund")
+STATUS_RE = re.compile(r"(.*_)?(status|state)")
 
 
 @dataclass
@@ -82,14 +87,19 @@ def _check_refs(spec: QuerySpec, cat: Catalog, a: Assessment) -> bool:
 def assess(spec: QuerySpec, cat: Catalog) -> Assessment:
     a = Assessment()
     for term in spec.unresolved:
-        a.block(INSUFFICIENT, f"No column or metric definition for '{term}' exists in the data.")
+        a.block(INSUFFICIENT, f"No column, value or metric definition for '{term}' exists in the data, so that part "
+                              "of the question cannot be answered without guessing.")
+    for reason in spec.ambiguities:
+        a.block(AMBIGUOUS, reason)
+    for reason in spec.unsupported:
+        a.block(UNSUPPORTED, reason)
     if not spec.table or not a.answerable or not _check_refs(spec, cat, a):
         return a
     base = spec.table
     a.tables = [base]
     if spec.kind in ("ratio", "growth") and (spec.group_by or spec.time_grain or spec.top_n):
         a.block(UNSUPPORTED, "Grouped rates and growth rates are not supported; ask for one figure at a time.")
-    if spec.top_n and not spec.group_by:
+    if spec.top_n and not (spec.group_by or spec.time_grain):
         a.block(UNSUPPORTED, "A top-N ranking needs an entity to rank (for example 'top 5 products').")
     if spec.group_by and spec.time_grain:
         a.block(UNSUPPORTED, "Grouping by both a dimension and a time grain is not supported.")
@@ -119,7 +129,10 @@ def assess(spec: QuerySpec, cat: Catalog) -> Assessment:
             a.dedupe.append(t)
             a.diagnostics.append(f"{t}: removed {p.exact_duplicate_rows} exact duplicate row(s) "
                                  f"(identical records, including {p.key or 'all fields'}).")
-        if p.duplicate_keys:
+        if p.duplicate_keys and t == base and _only_key_counted(spec, p.key):
+            a.diagnostics.append(f"{t}: {len(p.duplicate_keys)} {p.key} value(s) have conflicting records "
+                                 f"({', '.join(p.duplicate_keys[:3])}); counting distinct {p.key} is unaffected.")
+        elif p.duplicate_keys:
             a.block(CONTRADICTORY, f"{t}: {len(p.duplicate_keys)} {p.key} value(s) have conflicting records "
                                    f"({', '.join(p.duplicate_keys[:3])}); the correct version cannot be determined.")
     for child, col, parent in a.joins:
@@ -138,6 +151,24 @@ def assess(spec: QuerySpec, cat: Catalog) -> Assessment:
         # ponytail: checks nulls across the whole table, not only rows reachable from the base table
         if cp.nulls:
             a.block(INSUFFICIENT, f"{spec.group_by} is missing for {cp.nulls} row(s); those records cannot be grouped.")
+    for f in spec.filters:
+        t, c = _split(f.column)
+        if cat.profiles[t].columns[c].nulls:
+            a.block(INSUFFICIENT, f"{f.column} is missing for {cat.profiles[t].columns[c].nulls} row(s); "
+                                  f"some of those records may also be '{f.value}', so the filter is unreliable.")
+    if spec.measure and spec.aggregation in ("sum", "mean", "median") and not spec.ratio_filter:
+        filtered = {f.column for f in spec.filters}
+        for c, cp in cat.profiles[base].columns.items():
+            if STATUS_RE.fullmatch(c.lower()) and len(cp.top_values) > 1 and f"{base}.{c}" not in filtered \
+                    and spec.group_by != f"{base}.{c}":  # one figure per status mixes nothing
+                a.block(AMBIGUOUS, f"{base}.{c} has the values {', '.join(sorted(cp.top_values))}; it is unclear "
+                                   f"which {base} to include (for example '{next(iter(cp.top_values))} {base}').")
+    for t, df in cat.tables.items():  # a pre-aggregated table states the same figure: say why it is not used
+        if DERIVED_TABLE_RE.search(t) and t not in a.tables and spec.metric_term:
+            for c in df.columns:
+                if spec.metric_term.lower().split()[0] in c.lower() and c != spec.measure:
+                    a.diagnostics.append(f"{t}.{c} also reports {spec.metric_term}, but {t} is pre-aggregated and "
+                                         "is not reconciled with the record-level data, so it was not used.")
     if spec.ratio_filter:
         t, c = _split(spec.ratio_filter.column)
         if cat.profiles[t].columns[c].nulls:
@@ -152,6 +183,18 @@ def assess(spec: QuerySpec, cat: Catalog) -> Assessment:
     return a
 
 
+def _only_key_counted(spec: QuerySpec, key: str | None) -> bool:
+    """Counting distinct keys of the base table: conflicting non-key fields cannot change the answer."""
+    if spec.aggregation != "count_distinct" or spec.measure != key or spec.ratio_filter:
+        return False
+    refs = [spec.group_by, spec.date_column] + [f.column for f in spec.filters]
+    return all(not r or _split(r) == (spec.table, key) or _split(r)[0] != spec.table for r in refs)
+
+
+def is_money(column: str) -> bool:
+    return bool(MONEY_RE.search(column.lower()))
+
+
 def _check_measure(spec: QuerySpec, cat: Catalog, a: Assessment):
     if not spec.measure:
         return
@@ -162,7 +205,7 @@ def _check_measure(spec: QuerySpec, cat: Catalog, a: Assessment):
             return
         if cp.decimals > MAX_SOURCE_DECIMALS:
             a.block(UNSUPPORTED, f"{spec.measure} has {cp.decimals} decimal places; exact arithmetic is limited to {MAX_SOURCE_DECIMALS}.")
-        a.precision = cp.decimals
+        a.precision = max(cp.decimals, MEAN_MIN_DECIMALS) if spec.aggregation in ("mean", "median") else cp.decimals
     if cp.nulls:
         a.block(INSUFFICIENT, f"{spec.table}.{spec.measure} is missing for {cp.nulls} row(s); treating them as zero "
                               "or dropping them would change the result.")
@@ -178,6 +221,11 @@ def _check_measure(spec: QuerySpec, cat: Catalog, a: Assessment):
 def _check_currency(spec: QuerySpec, cat: Catalog, a: Assessment):
     if spec.aggregation not in ("sum", "mean", "median") or spec.kind == "ratio":
         return
+    if spec.measure and not is_money(spec.measure):  # quantities, weights: currencies do not apply
+        if spec.currency:
+            a.block(UNSUPPORTED, f"{spec.table}.{spec.measure} is not a monetary amount, so it cannot be expressed "
+                                 f"in {spec.currency}.")
+        return
     df = cat.tables[spec.table]
     col = currency_column(df)
     target = spec.currency
@@ -189,6 +237,9 @@ def _check_currency(spec: QuerySpec, cat: Catalog, a: Assessment):
         a.block(INSUFFICIENT, f"{(df[col] == '').sum()} row(s) in {spec.table} have no currency.")
         return
     found = sorted(set(df[col]))
+    if not target and spec.group_by == f"{spec.table}.{col}":  # one figure per currency: nothing is mixed
+        a.diagnostics.append(f"Each group is a single currency ({', '.join(found)}); amounts are not converted.")
+        return
     if not target:
         if len(found) > 1:
             a.block(AMBIGUOUS, f"Amounts are in {', '.join(found)}. Adding them without conversion is meaningless; "
@@ -251,6 +302,9 @@ def _check_dates(spec: QuerySpec, cat: Catalog, a: Assessment):
         return
     if cp.nulls:
         a.block(INSUFFICIENT, f"{spec.date_column} is missing for {cp.nulls} row(s).")
+    if spec.date_from and spec.date_to and spec.date_from > spec.date_to:
+        a.block(AMBIGUOUS, f"The requested period starts ({spec.date_from}) after it ends ({spec.date_to}).")
+        return
     if cp.kind == "datetime" and not cp.has_timezone:
         a.diagnostics.append(f"{spec.date_column} has no timezone; dates are taken as recorded.")
     lo, hi = cp.min[:10], cp.max[:10]

@@ -82,23 +82,24 @@ def ollama_status(model: str, url: str = "http://127.0.0.1:11434", timeout: floa
     return {"reachable": True, "model_installed": installed, "models": names}
 
 
-READING_FIELDS = ["table", "measure", "aggregation", "ratio_filter", "group_by", "time_grain", "top_n", "order",
-                  "currency", "date_from", "date_to", "growth_from", "growth_to", "date_column"]
+READING_FIELDS = ["table", "measure", "aggregation", "ratio_filter", "filters", "group_by", "time_grain", "top_n",
+                  "order", "currency", "date_from", "date_to", "growth_from", "growth_to", "date_column"]
 
 
 def reading(spec: QuerySpec | dict) -> dict:
     """What a spec means for the calculation, ignoring wording-only fields (metric_term, notes).
-    Any unresolved term makes the reading simply 'unresolved'."""
+    A reading that leaves part of the question unresolved, ambiguous or unsupported is simply 'unresolved'."""
     d = spec.model_dump() if isinstance(spec, QuerySpec) else {**QuerySpec().model_dump(), **spec}
-    if d.get("unresolved"):
+    if d.get("unresolved") or d.get("ambiguities") or d.get("unsupported"):
         return {"unresolved": True}
     out = {f: d.get(f) for f in READING_FIELDS}
+    out["filters"] = sorted((f["column"], f["op"], f["value"]) for f in out["filters"] or [])
     if out["ratio_filter"]:
         out["ratio_filter"] = {k: out["ratio_filter"][k] for k in ("column", "op", "value")}
     if not out["top_n"]:
         out["order"] = None  # direction only matters for rankings
     if out["ratio_filter"]:
-        out["aggregation"] = None  # a rate ignores the aggregation field
+        out["aggregation"] = out["measure"] = None  # a rate counts rows; aggregation and measure do not apply
     return out
 
 

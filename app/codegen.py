@@ -169,9 +169,13 @@ def duckdb_check(plan: Plan) -> str:
     if s.ratio_filter:
         finish = "Decimal(row[1]) / Decimal(row[2])"
     fmt = "x" if plan.integer_result else f"str(Decimal(x).quantize({q}, ROUND_HALF_EVEN))"
+    # no matching rows: a sum or count is zero; a mean, median or rate is undefined (the proof asserts the same)
+    empty = {"sum": "Decimal(0)", "count": "0", "count_distinct": "0"}.get(s.aggregation)
+    scalar = (f"result = fmt(values.get('*', {empty}))" if empty and not s.ratio_filter else
+              "assert '*' in values, 'no rows match the question'\nresult = fmt(values['*'])")
     tail = {
-        "scalar": "result = fmt(values['*'])",
-        "ratio": "result = fmt(values['*'])",
+        "scalar": scalar,
+        "ratio": scalar,
         "mapping": "result = {k: fmt(v) for k, v in sorted(values.items())}",
         "growth": f"before, after = values[{s.growth_from!r}], values[{s.growth_to!r}]\nresult = fmt((after - before) / before)",
         "ranking": f"ranked = sorted(values.items(), key=lambda kv: ({'-' if s.order == 'desc' else ''}kv[1], kv[0]))[:{s.top_n}]\n"
