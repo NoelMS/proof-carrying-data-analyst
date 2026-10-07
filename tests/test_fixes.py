@@ -56,6 +56,32 @@ def test_apply_then_rollback_and_restore(app):
     assert app.fixes()["log"] == []
 
 
+def test_refusal_suggests_fixes_that_unblock_it(app):
+    from app.workflow import Analyst
+    q = "How many shipments were made in March 2024?"
+    st = Analyst(app.catalog, CFG, suggest_fixes=True).run(q)
+    assert st.final["status"] == "refused"
+    found = st.final["fixes"]
+    assert {(x["fix"]["kind"], x["choice"], x["answerable"]) for x in found} == \
+        {("ambiguous_date", "dmy", True), ("ambiguous_date", "mdy", True)}
+    assert app.catalog.profiles["shipments"].columns["ship_date"].date_format == "ambiguous"  # nothing applied
+    assert app.fixes()["log"] == []
+
+    opt = found[0]["fix"]
+    app.apply_fix(opt["id"], "dmy", None, app.preview_fix(opt["id"], "dmy", None)["token"])
+    assert Analyst(app.catalog, CFG).run(q).verified
+
+
+def test_suggestions_are_relevant_and_report_what_remains(app):
+    from app.workflow import Analyst
+    a = Analyst(app.catalog, CFG, suggest_fixes=True)
+    weight = a.run("What is the total product weight?").final["fixes"]
+    assert {x["fix"]["kind"] for x in weight} == {"conflicting_records", "mixed_units"}
+    assert all(not x["answerable"] and x["remaining"] for x in weight)  # each clears one of two blockers
+    assert a.run("What is the total revenue?").final["fixes"] == []  # currency ambiguity has no data fix
+    assert "fixes" not in Analyst(app.catalog, CFG).run("What is the total revenue?").final  # off by default
+
+
 def test_rollback_order_and_stale_preview(app):
     c = option(app, "conflicting_records", "products")
     m = option(app, "mixed_units", "products")

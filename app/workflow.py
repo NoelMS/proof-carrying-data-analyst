@@ -21,6 +21,7 @@ from .answerability import Assessment, assess
 from .catalog import Catalog
 from .codegen import pandas_proof
 from .config import Config
+from .fixes import unblocking_fixes
 from .llm import ClaudeClient, LLMError
 from .local_model import LocalInterpreter, differences
 from .planning import Plan, build_plan
@@ -94,9 +95,11 @@ def format_value(plan: Plan, v: Any) -> str:
 
 
 class Analyst:
-    def __init__(self, catalog: Catalog, cfg: Config | None = None, code_writer: CodeWriter | None = None):
+    def __init__(self, catalog: Catalog, cfg: Config | None = None, code_writer: CodeWriter | None = None,
+                 suggest_fixes: bool = False):
         self.cat = catalog
         self.cfg = cfg or Config.from_env()
+        self.suggest_fixes = suggest_fixes
         self.sandbox = Sandbox(self.cfg)
         if self.cfg.llm_provider == "anthropic":
             self.llm = ClaudeClient(self.cfg.llm_model)
@@ -191,6 +194,8 @@ class Analyst:
         st.detected_issues = self.cat.issues_for(st.datasets)
         if not a.answerable:
             st.final = self._refusal(st, a.reasons[0], a.reasons[1:])
+            if self.suggest_fixes:
+                st.final["fixes"] = unblocking_fixes(self.cat, st.spec)
             return "done"
         return "plan"
 
