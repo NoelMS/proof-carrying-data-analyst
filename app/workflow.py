@@ -195,7 +195,11 @@ class Analyst:
         if not a.answerable:
             st.final = self._refusal(st, a.reasons[0], a.reasons[1:])
             if self.suggest_fixes:
-                st.final["fixes"] = unblocking_fixes(self.cat, st.spec)
+                try:
+                    st.final["fixes"] = unblocking_fixes(self.cat, st.spec)
+                except Exception:  # suggestions are optional; never replace the refusal's real reason
+                    log.exception("fix suggestions failed")
+                    st.final["fixes"] = []
             return "done"
         return "plan"
 
