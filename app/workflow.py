@@ -22,6 +22,7 @@ from .catalog import Catalog
 from .codegen import pandas_proof
 from .config import Config
 from .fixes import unblocking_fixes
+from .documents import apply_documents
 from .llm import LLMError
 from .local_model import LocalInterpreter, differences, ollama_status
 from .planning import Plan, build_plan
@@ -144,6 +145,7 @@ class Analyst:
             self._interpret_model(st, parsed)
         else:
             st.spec, st.interpreter = parsed, "deterministic parser"
+        apply_documents(st.spec, st.question, self.cat)  # rules stated in uploaded documents
         if is_instruction_like(st.question):
             st.spec.notes.append("instruction-like text in the question was treated as data and ignored")
         return "assess"

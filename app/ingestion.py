@@ -16,6 +16,7 @@ import pandas as pd
 from .normalize import normalize_table
 
 READERS = {".csv": "csv", ".xlsx": "excel", ".xlsm": "excel"}  # extend here for new formats
+DOCUMENTS = {".txt", ".md", ".pdf"}  # read as text: policies and definitions that apply to the tables
 _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 
 
@@ -30,6 +31,7 @@ class Workspace:
     metrics: dict = field(default_factory=dict)  # business definitions supplied with the data
     notes: list[str] = field(default_factory=list)
     normalized: list[tuple[str, str, str]] = field(default_factory=list)  # (table, column, what changed)
+    documents: dict[str, str] = field(default_factory=dict)  # file name -> text
 
     @property
     def data_dir(self) -> Path:
@@ -87,6 +89,20 @@ def read_file(path: Path) -> dict[str, pd.DataFrame]:
     return {table_name(path.stem if single else f"{path.stem}_{s}"): df for s, df in sheets.items()}
 
 
+def read_document(path: Path) -> str:
+    """Plain text of a .txt / .md / .pdf document. A PDF without extractable text is reported, not skipped."""
+    if path.suffix.lower() != ".pdf":
+        return path.read_text(encoding="utf-8", errors="replace")
+    try:
+        from pypdf import PdfReader
+        text = "\n".join(page.extract_text() or "" for page in PdfReader(str(path)).pages)
+    except Exception as e:  # pypdf raises many types for damaged files
+        raise IngestionError(f"{path.name}: unreadable PDF ({type(e).__name__})") from e
+    if not text.strip():
+        raise IngestionError(f"{path.name}: the PDF has no extractable text (a scanned image?)")
+    return text
+
+
 def build_workspace(files: list[Path], dest: Path | None = None) -> Workspace:
     """Ingest files into a fresh workspace directory. ``metrics.json`` is read as business definitions."""
     root = Path(dest or tempfile.mkdtemp(prefix="pcda_ws_"))
@@ -100,6 +116,9 @@ def build_workspace(files: list[Path], dest: Path | None = None) -> Workspace:
                 ws.metrics = json.loads(path.read_text(encoding="utf-8"))
             except (json.JSONDecodeError, UnicodeDecodeError) as e:
                 raise IngestionError(f"metrics.json: invalid JSON ({e})") from e
+            continue
+        if path.suffix.lower() in DOCUMENTS:
+            ws.documents[path.name] = read_document(path)
             continue
         if path.suffix.lower() not in READERS:
             ws.notes.append(f"Skipped {path.name}: unsupported file type.")
@@ -118,10 +137,14 @@ def build_workspace(files: list[Path], dest: Path | None = None) -> Workspace:
             ws.tables[name] = df
     if not ws.tables:
         raise IngestionError("No usable tables were found in the provided files.")
+    if ws.documents:  # definitions stated in documents, unless metrics.json already defines the name
+        from .documents import metrics_from_documents
+        known = {k.lower() for k in ws.metrics}
+        ws.metrics.update({k: d for k, d in metrics_from_documents(ws).items() if k.lower() not in known})
     return ws
 
 
 def load_directory(src: Path, dest: Path | None = None) -> Workspace:
     src = Path(src)
-    files = sorted(p for p in src.iterdir() if p.suffix.lower() in READERS or p.name == "metrics.json")
+    files = sorted(p for p in src.iterdir() if p.suffix.lower() in set(READERS) | DOCUMENTS or p.name == "metrics.json")
     return build_workspace(files, dest)

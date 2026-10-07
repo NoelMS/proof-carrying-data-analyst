@@ -46,9 +46,10 @@ from .benchmark import run_and_save
 from .catalog import Catalog, build_catalog
 from .answerability import assess
 from .config import Config
+from .documents import rules as doc_rules
 from .fixes import FixError, FixStore, as_dict, diff, fingerprint, option_by_id, propose, transform
 from . import local_setup
-from .ingestion import READERS, IngestionError, build_workspace, load_directory, read_file
+from .ingestion import DOCUMENTS, READERS, IngestionError, build_workspace, load_directory, read_file
 from .local_model import ollama_status
 from .local_setup import DOWNLOAD_URL, ollama_exe
 from .planning import build_plan
@@ -185,6 +186,7 @@ class App:
         for term, d in up.metrics.items():  # the demonstration's definitions win a name clash
             ws.metrics.setdefault(term, {**d, "table": renamed.get(d.get("table"), d.get("table"))})
         ws.notes += up.notes
+        ws.documents.update(up.documents)
         ws.normalized += [(renamed.get(t, t), c, what) for t, c, what in up.normalized]
         shutil.rmtree(up.root, ignore_errors=True)
         cat = build_catalog(ws)
@@ -639,7 +641,7 @@ class Handler(SimpleHTTPRequestHandler):
             "max_repairs": cfg.max_repairs,
             "workspace": app.workspace_label,
             "tables": len(cat.tables),
-            "supported_uploads": sorted(READERS) + ["metrics.json"],
+            "supported_uploads": sorted(READERS) + sorted(DOCUMENTS) + ["metrics.json"],
             "benchmark_available": (DEMO / "ground_truth.json").exists(),
         }
 
@@ -652,7 +654,10 @@ class Handler(SimpleHTTPRequestHandler):
                            "records": sum(t["rows"] for t in tables)},
                 "relationships": [r.__dict__ for r in cat.relationships],
                 "issues": [i.__dict__ for i in cat.issues],
-                "metrics": cat.metrics}
+                "metrics": cat.metrics,
+                "documents": [{"name": n, "rules": [{"kind": r.kind, "sentence": r.sentence} for r in doc_rules({n: text})
+                                                    ]}
+                              for n, text in cat.workspace.documents.items()]}
 
     def _dataset(self, name):
         cat = self.app.catalog

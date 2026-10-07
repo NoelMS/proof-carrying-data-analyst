@@ -6,6 +6,9 @@ import { reveal } from "../motion.js";
 import { store, update } from "../state.js";
 import { issueStory } from "./quality.js";
 
+const DOC_KIND = { exclude: "exclusion", only: "restriction", define: "definition", fiscal: "fiscal year",
+                   other: "statement", instruction: "instruction, ignored" };
+
 export function renderDataList(main) {
   setTitle("Data");
   const ds = store.datasets;
@@ -29,7 +32,7 @@ export function renderDataList(main) {
     await act(`Adding ${files.length} file(s) and profiling…`, async () => api.upload(await filesToPayload(files)), "Data added");
   };
 
-  const fileInput = h("input", { type: "file", multiple: true, accept: ".csv,.xlsx,.xlsm,.json", class: "sr-only", id: "upload" });
+  const fileInput = h("input", { type: "file", multiple: true, accept: ".csv,.xlsx,.xlsm,.json,.txt,.md,.pdf", class: "sr-only", id: "upload" });
   fileInput.addEventListener("change", () => { addFiles([...fileInput.files]); fileInput.value = ""; });
   const drop = h("div", { class: "dropzone", role: "button", tabindex: "0", "aria-describedby": "drop-help",
       onclick: () => fileInput.click(),
@@ -76,6 +79,15 @@ export function renderDataList(main) {
                   "aria-label": `Remove ${u.name}`,
                   onclick: () => act(`Removing ${u.name}…`, () => api.removeUpload(u.name), "File removed") }, "Remove"))))
             : h("p", { class: "meta" }, "Uploaded files stay here between sessions.")))),
+    (ds.documents || []).length > 0 && h("section", { class: "section" },
+      h("div", { class: "section__head" }, h("h2", { class: "eyebrow" }, "Documents"),
+        h("span", { class: "meta" }, "Read as rules: applied when they map onto the data, otherwise questions they concern are refused")),
+      h("div", { class: "rows", style: { "border-top": "0" } }, ds.documents.map((d, i) => reveal(
+        h("div", { class: "row row--compact" },
+          h("span", { class: "row__index" }, pad(i + 1)),
+          h("span", { class: "row__title" }, d.name,
+            h("ul", { class: "notes" }, d.rules.map((r) => h("li", {},
+              h("span", { class: "mono meta" }, `${DOC_KIND[r.kind] || r.kind} · `), r.sentence))))), i)))),
     h("section", { class: "section" },
       h("div", { class: "section__head" }, h("h2", { class: "eyebrow" }, "Tables in use"),
         h("span", { class: "meta" }, WORKSPACES[ds.workspace])),
