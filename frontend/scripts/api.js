@@ -38,6 +38,7 @@ export const api = {
   upload: (files) => request("/api/workspace", { method: "POST", body: { files } }),
   useDemo: () => request("/api/workspace", { method: "POST", body: { demo: true } }),
   useUploads: () => request("/api/workspace", { method: "POST", body: { uploaded: true } }),
+  useBoth: () => request("/api/workspace", { method: "POST", body: { both: true } }),
   removeUpload: (name) => request(`/api/uploads/${enc(name)}`, { method: "DELETE" }),
   exportUrl: (id) => `/api/analysis/${enc(id)}/export`,
   bundleUrl: (id) => `/api/analysis/${enc(id)}/bundle`,
@@ -71,3 +72,6 @@ export async function filesToPayload(fileList) {
   });
   return Promise.all([...fileList].map(read));
 }
+
+/* the three workspaces, as named in the interface */
+export const WORKSPACES = { demonstration: "Demonstration data", uploaded: "Your uploads", both: "Demonstration + uploads" };

@@ -1,5 +1,5 @@
 // Application shell: routing, header status, sidebar, shortcuts, first-visit intro.
-import { ConnectionError, api } from "./api.js";
+import { ConnectionError, WORKSPACES, api } from "./api.js";
 import { closeDrawer, initDrawer } from "./components.js";
 import { arrow, fmtInt, h } from "./dom.js";
 import { initScrollEffects, reducedMotion, transition } from "./motion.js";
@@ -80,7 +80,7 @@ function renderSidebar(s) {
     "aria-current": decodeURIComponent(href) === here ? "page" : null },
     h("span", {}, left), right != null && h("span", { class: "num" }, right)));
   sidebar.replaceChildren(
-    group(s.datasets?.workspace === "uploaded" ? "Data · your uploads" : "Data · demonstration", s.datasets
+    group(`Data · ${WORKSPACES[s.datasets?.workspace] || WORKSPACES.demonstration}`, s.datasets
       ? h("ul", { class: "sidebar__list" }, s.datasets.tables.map((t) => item(`#/data/${encodeURIComponent(t.name)}`, t.name, fmtInt(t.rows))))
       : h("p", { class: "meta" }, s.connection === "lost" ? "Unavailable" : "Loading")),
     group("Analysis",

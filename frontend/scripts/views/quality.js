@@ -1,5 +1,5 @@
 // Data quality: each detected issue explained as evidence, with how the analysis handles it.
-import { api } from "../api.js";
+import { WORKSPACES, api } from "../api.js";
 import { marker } from "../components.js";
 import { h, pad, setTitle } from "../dom.js";
 import { reveal } from "../motion.js";
@@ -74,6 +74,6 @@ export async function renderQuality(main) {
     h("div", { class: "rows" }, issues.map((i, n) => reveal(issueStory(i, fixes), Math.min(n, 6)))),
     h("section", { class: "section", id: "changes" },
       h("div", { class: "section__head" }, h("h2", { class: "eyebrow" }, "Change history"),
-        h("span", { class: "meta" }, `${ds.workspace === "uploaded" ? "Your uploads" : "Demonstration data"} · applied fixes, newest first`)),
+        h("span", { class: "meta" }, `${WORKSPACES[ds.workspace]} · applied fixes, newest first`)),
       changeHistory(fixes))));
 }

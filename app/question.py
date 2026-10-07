@@ -35,7 +35,7 @@ class QuerySpec(BaseModel):
     metric_term: str = Field("", description="Phrase in the question naming the metric")
     table: str | None = Field(None, description="Base table holding one row per measured record")
     measure: str | None = Field(None, description="Column of the base table to aggregate; null for row counts")
-    aggregation: Literal["sum", "mean", "median", "count", "count_distinct"] = "sum"
+    aggregation: Literal["sum", "mean", "median", "max", "min", "count", "count_distinct"] = "sum"
     ratio_filter: Filter | None = Field(None, description="For rates/shares: rows matching / all rows")
     filters: list[Filter] = []
     date_column: str | None = Field(None, description="'table.column' used for date filters / time grain")
@@ -121,8 +121,11 @@ def _date_column(table: str, profiles: dict[str, TableProfile], ql: str = "", no
 
 
 DESC_WORDS = {"highest", "most", "top", "best", "largest", "biggest", "maximum", "max", "high", "higher",
-              "leading", "greatest", "strongest"}
-ASC_WORDS = {"lowest", "least", "bottom", "worst", "smallest", "fewest", "minimum", "min", "low", "lower", "weakest"}
+              "leading", "greatest", "strongest", "oldest"}
+ASC_WORDS = {"lowest", "least", "bottom", "worst", "smallest", "fewest", "minimum", "min", "low", "lower", "weakest", "youngest"}
+# a single extreme record when nothing is grouped ("oldest age"); comparatives like "higher" are not
+MAX_WORDS = {"highest", "largest", "biggest", "maximum", "max", "greatest", "oldest"}
+MIN_WORDS = {"lowest", "smallest", "minimum", "min", "youngest"}
 # unambiguous currency names only ("dollar", "peso", "franc" name several currencies)
 CURRENCY_WORDS = {"euro": "EUR", "euros": "EUR", "yen": "JPY", "sterling": "GBP",
                   "dong": "VND", "baht": "THB", "rupiah": "IDR", "ringgit": "MYR", "yuan": "CNY",
@@ -466,7 +469,7 @@ def parse_question(question: str, tables: dict, profiles: dict[str, TableProfile
     if unmatched_group and not any(set(_tokens(unmatched_group)) <= set(_tokens(f.value)) for f in spec.filters):
         spec.unresolved.append(unmatched_group)
     if RATE_RE.search(ql) and not spec.ratio_filter and spec.filters:  # "percentage of payments that failed"
-        if spec.measure and spec.aggregation in ("sum", "mean", "median"):
+        if spec.measure and spec.aggregation in ("sum", "mean", "median", "max", "min"):
             spec.unsupported.append("A share of a summed amount (for example the share of revenue from one channel) "
                                     "is not supported; only the share of records is.")
         elif len(spec.filters) > 1:
@@ -484,7 +487,11 @@ def parse_question(question: str, tables: dict, profiles: dict[str, TableProfile
         if not n:
             notes.append(f"'{order_word}' read as the single {'highest' if order == 'desc' else 'lowest'} value")
     elif order_word and not spec.group_by and not spec.time_grain:
-        notes.append(f"'{order_word}' ignored: the question names nothing to rank")
+        if order_word in MAX_WORDS | MIN_WORDS and spec.measure and spec.aggregation == "sum" and not spec.ratio_filter and not spec.growth_from:
+            spec.aggregation = "max" if order == "desc" else "min"  # "oldest age", "highest revenue"
+            notes.append(f"'{order_word}' read as the {'largest' if order == 'desc' else 'smallest'} single value")
+        else:
+            notes.append(f"'{order_word}' ignored: the question names nothing to rank")
     if spec.date_from or spec.time_grain or spec.growth_from:
         spec.date_column = _date_column(spec.table, profiles, ql, notes)
         if not spec.date_column:
@@ -504,7 +511,8 @@ GRAMMAR = {"what", "whats", "which", "who", "whom", "whose", "how", "much", "man
            "earned", "brought", "sold", "record", "records", "row", "rows", "entry", "entries", "unit", "up",
            "breakdown", "split", "grouped", "group", "us", "selling", "sell", "sells", "came", "come", "comes",
            "through", "via", "make", "makes"}
-AGG_WORDS = {"mean": {"average", "avg", "mean"}, "median": {"median"}, "sum": {"sum", "combined"},
+AGG_WORDS = {"mean": {"average", "avg", "mean"}, "median": {"median"},
+             "max": MAX_WORDS, "min": MIN_WORDS, "sum": {"sum", "combined"},
              "count": {"count", "number", "many"}, "count_distinct": {"count", "number", "many", "distinct", "unique",
                                                                       "different"}}
 

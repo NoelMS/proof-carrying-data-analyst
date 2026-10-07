@@ -156,7 +156,7 @@ def assess(spec: QuerySpec, cat: Catalog) -> Assessment:
         if cat.profiles[t].columns[c].nulls:
             a.block(INSUFFICIENT, f"{f.column} is missing for {cat.profiles[t].columns[c].nulls} row(s); "
                                   f"some of those records may also be '{f.value}', so the filter is unreliable.")
-    if spec.measure and spec.aggregation in ("sum", "mean", "median") and not spec.ratio_filter:
+    if spec.measure and spec.aggregation in ("sum", "mean", "median", "max", "min") and not spec.ratio_filter:
         filtered = {f.column for f in spec.filters}
         for c, cp in cat.profiles[base].columns.items():
             if STATUS_RE.fullmatch(c.lower()) and len(cp.top_values) > 1 and f"{base}.{c}" not in filtered \
@@ -199,7 +199,7 @@ def _check_measure(spec: QuerySpec, cat: Catalog, a: Assessment):
     if not spec.measure:
         return
     cp = cat.profiles[spec.table].columns[spec.measure]
-    if spec.aggregation in ("sum", "mean", "median"):
+    if spec.aggregation in ("sum", "mean", "median", "max", "min"):
         if cp.kind not in ("integer", "decimal"):
             a.block(UNSUPPORTED, f"{spec.table}.{spec.measure} is not numeric (type: {cp.kind}).")
             return
@@ -210,7 +210,7 @@ def _check_measure(spec: QuerySpec, cat: Catalog, a: Assessment):
         a.block(INSUFFICIENT, f"{spec.table}.{spec.measure} is missing for {cp.nulls} row(s); treating them as zero "
                               "or dropping them would change the result.")
     unit_col = unit_column_for(cat.tables[spec.table], spec.measure)
-    if unit_col and spec.aggregation in ("sum", "mean", "median"):
+    if unit_col and spec.aggregation in ("sum", "mean", "median", "max", "min"):
         units = sorted(set(cat.tables[spec.table][unit_col]) - {""})
         if len(units) > 1:
             a.block(UNSUPPORTED, f"{spec.measure} mixes units ({', '.join(units)}) and the data defines no conversion.")
@@ -219,7 +219,7 @@ def _check_measure(spec: QuerySpec, cat: Catalog, a: Assessment):
 
 
 def _check_currency(spec: QuerySpec, cat: Catalog, a: Assessment):
-    if spec.aggregation not in ("sum", "mean", "median") or spec.kind == "ratio":
+    if spec.aggregation not in ("sum", "mean", "median", "max", "min") or spec.kind == "ratio":
         return
     if spec.measure and not is_money(spec.measure):  # quantities, weights: currencies do not apply
         if spec.currency:

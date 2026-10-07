@@ -1,5 +1,5 @@
 """Everything known about a workspace before any question is asked."""
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .ingestion import Workspace
 from .profiling import Relationship, TableProfile, profile_workspace
@@ -12,6 +12,7 @@ class Catalog:
     profiles: dict[str, TableProfile]
     relationships: list[Relationship]
     issues: list[Issue]
+    origin: dict = field(default_factory=dict)  # table -> (fix store label, name there); set by the app
 
     @property
     def tables(self):

@@ -26,7 +26,7 @@ export const STATE_LABEL = {
   CONTRADICTORY_DATA: "Contradictory data", UNSUPPORTED_OPERATION: "Unsupported operation",
   VERIFICATION_FAILED: "Verification failed", REFUSE: "Refused",
 };
-const AGG = { sum: "Total", mean: "Average", median: "Median", count: "Count", count_distinct: "Distinct count" };
+const AGG = { sum: "Total", mean: "Average", median: "Median", max: "Highest", min: "Lowest", count: "Count", count_distinct: "Distinct count" };
 
 /* ---------------------------------------------------------------- derived state */
 function nextStage(s) {

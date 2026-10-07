@@ -85,7 +85,7 @@ Run these with the project environment, for example `.venv\Scripts\python server
 |---|---|
 | Analysis | Question input (Ctrl/âŒ˜ + Enter to submit, `/` to focus), the available data, and example questions |
 | Analysis / result | Split view. The left side holds the stable record: question, stage timeline, data used, data checks, plan and verification checks. The right side moves from analyzing to executing, verifying, and then the verified result or a refusal. Below sit the evidence, execution output and the executable proof (copy, download, re-run). |
-| Data | Switch between the demonstration data and your uploads. Uploaded files are kept in `.pcda/uploads/` across sessions, and new uploads are added to them; a file with the same name replaces the earlier one. Files can be removed individually. Also shows table inventory, relationships and metric definitions. Each table has an inspector with overview, schema, quality, sample rows and relationships. |
+| Data | Switch between the demonstration data, your uploads, or both together (the default after an upload, so demonstration questions keep working; an uploaded table named like a demonstration table is shown as `<name>_upload`, and its fixes stay with the upload). Uploaded files are kept in `.pcda/uploads/` across sessions, and new uploads are added to them; a file with the same name replaces the earlier one. Files can be removed individually. Also shows table inventory, relationships and metric definitions. Each table has an inspector with overview, schema, quality, sample rows and relationships. |
 | Quality | Every detected issue: why it matters and how the analysis handles it. Fixable issues have a **Fix this issue** flow. You choose the fix (for example day-first or month-first dates, which duplicate to keep, a target unit), preview every removed row and changed cell, and confirm. Only then is it applied. Applied fixes are stored as overrides in `.pcda/fixes/`, and source files are never modified. **Change history** lists each change with **Roll back** (newest change per table first) and **Restore original** per table. |
 | History | Past analyses grouped by day, each reopening its result and proof. **Re-run** and **Run again as new analysis** work for analyses from earlier sessions; the plan is rebuilt from the saved interpretation. |
 | Workbench | An editor that runs code in the analyst's own sandbox, where pandas, numpy and the standard library are already installed, so nothing needs setting up on your computer. Opened from an analysis, **Run and verify** applies every verification check to the edited code. **Download runnable bundle** gives a zip with `proof.py`, the CSVs it reads, `requirements.txt` and a double-click launcher that uses the analyst's Python. |
@@ -97,7 +97,7 @@ Progress comes from the backend. Each workflow stage pushes a state snapshot ove
 |---|---|
 | `GET /api/status` | Configuration and sandbox health |
 | `GET /api/datasets`, `GET /api/datasets/<table>` | Inventory, profiles, sample rows, relationships, issues |
-| `POST /api/workspace` | Add uploads (`{"files": [{"name", "data_base64"}]}`), or switch with `{"demo": true}` / `{"uploaded": true}` |
+| `POST /api/workspace` | Add uploads (`{"files": [{"name", "data_base64"}]}`), or switch with `{"demo": true}` / `{"uploaded": true}` / `{"both": true}` |
 | `DELETE /api/uploads/<file>` | Remove one uploaded file |
 | `POST /api/analyze` | Start an analysis (`{"question", "claim"?}`) and return its `id` |
 | `GET /api/analysis/<id>` and `/events` | Latest state, or a live SSE stream of states |
@@ -126,7 +126,7 @@ Structured logs (request ID, stage, attempt, status, duration, refusal reason; n
 
 Values are read from the environment, then from `.env`. Real environment variables win.
 
-**Without a model (`none`)**, questions are interpreted by a deterministic parser. It handles totals, averages, medians, counts, distinct counts, rates, growth between two years, top-N and bottom-N, grouping by a column (joined through many-to-one relationships), monthly or yearly grain, date ranges, and a reporting currency. Proof code comes from templates.
+**Without a model (`none`)**, questions are interpreted by a deterministic parser. It handles totals, averages, medians, the largest or smallest single value ("oldest age", "highest chol"), counts, distinct counts, rates, growth between two years, top-N and bottom-N, grouping by a column (joined through many-to-one relationships), monthly or yearly grain, date ranges, and a reporting currency. Proof code comes from templates.
 
 Questions don't need exact phrasing. For example, "region with high revenue usd" reads as total revenue in USD by region, highest one. The parser understands:
 - **Currencies:** ISO codes (`usd`) and unambiguous names (`euros`, `yen`, `dong`), anywhere in the question.
@@ -226,7 +226,7 @@ Exact duplicate rows (identical in every field, including the record ID) are cou
 python -m pytest -q
 ```
 
-The suite (199 tests) covers:
+The suite (204 tests) covers:
 - ingestion: malformed, empty or corrupted files, encodings, hostile column names
 - profiling and trap detection
 - sandbox isolation: environment secrets, subprocess, file reads and writes, network, ctypes, timeout, memory

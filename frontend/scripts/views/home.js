@@ -1,5 +1,5 @@
 // Analytical workspace landing: the question surface and the data it can draw on.
-import { ConnectionError, api } from "../api.js";
+import { ConnectionError, WORKSPACES, api } from "../api.js";
 import { connectionLost } from "../components.js";
 import { arrow, fmtInt, h, pad, setTitle } from "../dom.js";
 import { reveal } from "../motion.js";
@@ -77,7 +77,7 @@ function renderData(col, ds) {
   if (!ds) { col.replaceChildren(h("p", { class: "eyebrow", id: "available-data" }, "Available data"), h("p", { class: "meta" }, "Loading datasets…")); return; }
   col.replaceChildren(
     h("div", { class: "section__head" }, h("h2", { class: "eyebrow", id: "available-data" },
-        ds.workspace === "uploaded" ? "Available data · your uploads" : "Available data · demonstration"),
+        `Available data · ${WORKSPACES[ds.workspace]}`),
       h("a", { class: "btn btn--secondary", href: "#/data", style: { "min-height": "30px" } }, "Change or add data ", arrow())),
     h("div", { class: "figures" },
       [[pad(ds.totals.tables), "datasets"], [fmtInt(ds.totals.columns), "columns"], [fmtInt(ds.totals.records), "records"]].map(([v, l], i) =>

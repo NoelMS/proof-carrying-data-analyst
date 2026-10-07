@@ -74,7 +74,7 @@ def _pandas_aggregate(plan: Plan, q: str) -> list[str]:
              f"missing = set(df[{c['source_column']!r}]) - set(rate)",
              "assert not missing, f'no exchange rate for {sorted(missing)}'",
              f"items = [Decimal(a) * rate[cur] for a, cur in zip(df[{m!r}], df[{c['source_column']!r}])]"]
-    elif s.aggregation in ("sum", "mean", "median"):
+    elif s.aggregation in ("sum", "mean", "median", "max", "min"):
         L = [f"items = [Decimal(a) for a in df[{m!r}]]"]
     elif s.aggregation == "count_distinct":
         L = [f"items = list(df[{m!r}])"]
@@ -84,6 +84,8 @@ def _pandas_aggregate(plan: Plan, q: str) -> list[str]:
           "    " + {"sum": "return sum(values, Decimal(0))",
                     "mean": "assert values, 'no rows'\n    return sum(values, Decimal(0)) / len(values)",
                     "median": "assert values, 'no rows'\n    return statistics.median(values)",
+                    "max": "assert values, 'no rows'\n    return max(values)",
+                    "min": "assert values, 'no rows'\n    return min(values)",
                     "count": "return len(values)",
                     "count_distinct": "return len(set(values))"}[s.aggregation],
           "", "",
@@ -159,13 +161,14 @@ def duckdb_check(plan: Plan) -> str:
         aggs = f"COUNT(*) FILTER (WHERE {_sql_cond(plan, s.ratio_filter.column, s.ratio_filter.op, s.ratio_filter.value)}), COUNT(*)"
     else:
         aggs = {"sum": f"SUM({value})", "mean": f"SUM({value}), COUNT({value})", "median": f"list({value} ORDER BY {value})",
+                "max": f"MAX({value})", "min": f"MIN({value})",
                 "count": "COUNT(*)", "count_distinct": f"COUNT(DISTINCT b.{_ident(s.measure or '')})"}[s.aggregation]
     where_sql = ("\nWHERE " + " AND ".join(where)) if where else ""
     sql = f"WITH {', '.join(ctes)}\nSELECT {key} AS k, {aggs}\nFROM {frm}{where_sql}\nGROUP BY 1"
     check_sql = f"WITH {', '.join(ctes)}\nSELECT COUNT(*) FROM {frm}\nWHERE {' OR '.join(nulls)}" if nulls else ""
     q = f'Decimal("1e-{plan.precision}")' if plan.precision else 'Decimal("1")'
     finish = {"sum": "row[1] or Decimal(0)", "mean": "row[1] / row[2]", "count": "row[1]", "count_distinct": "row[1]",
-              "median": "median(row[1])"}[s.aggregation]
+              "max": "row[1]", "min": "row[1]", "median": "median(row[1])"}[s.aggregation]
     if s.ratio_filter:
         finish = "Decimal(row[1]) / Decimal(row[2])"
     fmt = "x" if plan.integer_result else f"str(Decimal(x).quantize({q}, ROUND_HALF_EVEN))"

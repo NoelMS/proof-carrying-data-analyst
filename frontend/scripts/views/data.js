@@ -1,5 +1,5 @@
 // Datasets: inventory, upload, and a focused inspector per table.
-import { ApiError, ConnectionError, api, filesToPayload } from "../api.js";
+import { ApiError, ConnectionError, WORKSPACES, api, filesToPayload } from "../api.js";
 import { connectionLost, errorNotice, facts, marker, table, toast } from "../components.js";
 import { arrow, fmtInt, h, pad, setTitle } from "../dom.js";
 import { reveal } from "../motion.js";
@@ -43,12 +43,12 @@ export function renderDataList(main) {
   const choice = (label, value, extra, disabled) => h("button", {
     type: "button", "aria-pressed": String(ds.workspace === value), disabled: disabled || null,
     onclick: () => ds.workspace !== value && act("Switching workspace…",
-      value === "demonstration" ? api.useDemo : api.useUploads),
+      { demonstration: api.useDemo, uploaded: api.useUploads, both: api.useBoth }[value]),
   }, label, extra != null && h("span", { class: "count" }, extra));
 
   main.replaceChildren(h("div", { class: "view" },
     h("header", { class: "view__head" },
-      h("p", { class: "eyebrow" }, ds.workspace === "uploaded" ? "Datasets · your uploads" : "Datasets · demonstration data"),
+      h("p", { class: "eyebrow" }, `Datasets · ${WORKSPACES[ds.workspace]}`),
       h("h1", { class: "title", tabindex: "-1" },
         `${ds.totals.tables} ${ds.totals.tables === 1 ? "table" : "tables"}, ${fmtInt(ds.totals.records)} ${ds.totals.records === 1 ? "record" : "records"}.`),
       h("div", { class: "workspace-bar" },
@@ -56,9 +56,11 @@ export function renderDataList(main) {
           h("p", { class: "eyebrow", style: { "margin-bottom": "var(--space-2)" } }, "Analyze"),
           h("div", { class: "segmented", role: "group", "aria-label": "Workspace" },
             choice("Demonstration data", "demonstration"),
-            choice("Your uploads", "uploaded", uploads.length ? `${uploads.length}` : "0", !uploads.length))),
+            choice("Your uploads", "uploaded", uploads.length ? `${uploads.length}` : "0", !uploads.length),
+            choice("Both", "both", null, !uploads.length))),
         h("p", { class: "meta", style: { "max-width": "38ch" } }, ds.workspace === "uploaded"
           ? "Questions run against every file you have uploaded."
+          : ds.workspace === "both" ? "Questions can use the demonstration tables and your uploads."
           : uploads.length ? "Your uploads are kept. Switch back at any time." : "Upload files to analyze your own data.")),
       status),
     h("section", { class: "section", style: { "margin-top": "var(--space-6)" } },
@@ -76,7 +78,7 @@ export function renderDataList(main) {
             : h("p", { class: "meta" }, "Uploaded files stay here between sessions.")))),
     h("section", { class: "section" },
       h("div", { class: "section__head" }, h("h2", { class: "eyebrow" }, "Tables in use"),
-        h("span", { class: "meta" }, ds.workspace === "uploaded" ? "From your uploads" : "Demonstration data")),
+        h("span", { class: "meta" }, WORKSPACES[ds.workspace])),
       h("div", { class: "rows", style: { "border-top": "0" } }, ds.tables.map((t, i) => reveal(
         h("a", { class: "row", href: `#/data/${encodeURIComponent(t.name)}` },
           h("span", { class: "row__index" }, pad(i + 1)),

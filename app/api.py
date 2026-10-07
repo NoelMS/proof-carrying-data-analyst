@@ -105,9 +105,10 @@ class Run:
 
 
 class App:
-    """Two workspaces: the demonstration data, and the user's uploads, which persist in `uploads_dir`
-    and accumulate across uploads and restarts. The active choice is remembered too. Confirmed data
-    fixes are stored per workspace as overrides (see fixes.py) and applied whenever it is loaded."""
+    """Three workspaces: the demonstration data, the user's uploads (which persist in `uploads_dir` and
+    accumulate across uploads and restarts), and both together. The active choice is remembered too.
+    Confirmed data fixes are stored per source as overrides (see fixes.py) and applied whenever it is
+    loaded; in the combined workspace each table's fixes go to the store of the source it came from."""
 
     def __init__(self, cfg: Config, history_dir: Path = HISTORY, uploads_dir: Path = UPLOADS):
         self.cfg = cfg
@@ -119,9 +120,10 @@ class App:
         self.bench: dict = {"running": False}
         self.workspace_label = "demonstration"
         self.catalog = self._build("demonstration")
-        if self._active_file.exists() and self._active_file.read_text().strip() == "uploaded" and self.uploads():
+        active = self._active_file.read_text().strip() if self._active_file.exists() else ""
+        if active in ("uploaded", "both") and self.uploads():
             try:
-                self.catalog, self.workspace_label = self._build("uploaded"), "uploaded"
+                self.catalog, self.workspace_label = self._build(active), active
             except IngestionError:
                 pass  # stay on the demonstration data; the uploads stay listed for removal
         self.sandbox_probe = self._probe()
@@ -140,12 +142,48 @@ class App:
     def _upload_files(self) -> list[Path]:
         return sorted(p for p in self.uploads_dir.iterdir() if p.is_file())
 
-    def _build(self, label: str, files: list[Path] | None = None, with_fixes: bool = True) -> Catalog:
+    def _load(self, label: str, files: list[Path] | None = None, with_fixes: bool = True):
         dest = Path(tempfile.mkdtemp(prefix="pcda_ws_"))
         ws = load_directory(DEMO, dest) if label == "demonstration" else build_workspace(files or self._upload_files(), dest)
         if with_fixes:
             self.fix_store(label).apply_overrides(ws)
-        return build_catalog(ws)
+        return ws
+
+    def _build(self, label: str, files: list[Path] | None = None, with_fixes: bool = True) -> Catalog:
+        """`origin` maps each table to the fix store it belongs to and its name there."""
+        if label != "both":
+            cat = build_catalog(self._load(label, files, with_fixes))
+            cat.origin = {t: (label, t) for t in cat.tables}
+            return cat
+        ws = self._load("demonstration", with_fixes=with_fixes)
+        up = self._load("uploaded", files, with_fixes)
+        origin = {t: ("demonstration", t) for t in ws.tables}
+        renamed = {}
+        for t, df in up.tables.items():
+            name = t if t not in ws.tables else f"{t}_upload"  # demonstration names stay as the benchmark knows them
+            while name in ws.tables:
+                name += "_"
+            renamed[t], origin[name] = name, ("uploaded", t)
+            ws.tables[name] = df
+            shutil.copyfile(up.data_dir / f"{t}.csv", ws.data_dir / f"{name}.csv")
+            if name != t:
+                ws.notes.append(f"Uploaded table '{t}' is shown as '{name}': the demonstration data has a table "
+                                "with that name.")
+        for term, d in up.metrics.items():  # the demonstration's definitions win a name clash
+            ws.metrics.setdefault(term, {**d, "table": renamed.get(d.get("table"), d.get("table"))})
+        ws.notes += up.notes
+        shutil.rmtree(up.root, ignore_errors=True)
+        cat = build_catalog(ws)
+        cat.origin = origin
+        return cat
+
+    def _route(self, table: str) -> tuple[FixStore, str]:
+        label, name = self.catalog.origin.get(table, (self.workspace_label, table))
+        return self.fix_store(label), name
+
+    def _stores(self) -> list[tuple[str, FixStore]]:
+        labels = dict.fromkeys(label for label, _ in self.catalog.origin.values())
+        return [(label, self.fix_store(label)) for label in labels or [self.workspace_label]]
 
     def uploads(self) -> list[dict]:
         return [{"name": p.name, "bytes": p.stat().st_size} for p in self._upload_files()]
@@ -175,7 +213,7 @@ class App:
         store = self.fix_store("uploaded")
         for t in new_tables:  # a re-uploaded file replaces any fixes made to its old version
             store.restore_original(t)
-        self._activate(self._build("uploaded"), "uploaded")
+        self._activate(self._build("both"), "both")  # the demonstration data stays usable alongside
 
     def use_demo(self):
         self._activate(self._build("demonstration"), "demonstration")
@@ -185,6 +223,11 @@ class App:
             raise LookupError("No files have been uploaded yet.")
         self._activate(self._build("uploaded"), "uploaded")
 
+    def use_both(self):
+        if not self.uploads():
+            raise LookupError("No files have been uploaded yet.")
+        self._activate(self._build("both"), "both")
+
     def remove_upload(self, name: str):
         path = self.uploads_dir / Path(name).name
         if not path.is_file():
@@ -193,13 +236,20 @@ class App:
             for t in read_file(path):
                 self.fix_store("uploaded").restore_original(t)
         path.unlink()
-        if self.workspace_label == "uploaded":
-            self.use_uploads() if self.uploads() else self.use_demo()
+        if self.workspace_label != "demonstration":
+            self._activate(self._build(self.workspace_label), self.workspace_label) if self.uploads() else self.use_demo()
 
     # ---------------------------------------------------------------- data fixes
     def fixes(self) -> dict:
         return {"workspace": self.workspace_label, "options": [as_dict(o) for o in propose(self.catalog)],
-                "log": self.fix_store().log()}
+                "log": self._log()}
+
+    def _log(self) -> list[dict]:
+        """Every applied fix behind the active tables, under the names the tables have here, oldest first."""
+        shown = {o: t for t, o in self.catalog.origin.items()}
+        entries = [{**e, "table": shown.get((label, e["table"]), e["table"])} for label, store in self._stores()
+                   for e in store.log() if (label, e["table"]) in shown]
+        return sorted(entries, key=lambda e: e["ts"])
 
     def preview_fix(self, fix_id: str, choice, value) -> dict:
         cat = self.catalog
@@ -219,17 +269,20 @@ class App:
         d = diff(cat, opt.table, before, after)
         if not d["removed"]["count"] and not d["changed"]["count"]:
             raise FixError("This change would not modify any rows.")
-        entry = self.fix_store().commit(opt.table, before, after, opt, choice, value, d)
+        store, name = self._route(opt.table)
+        entry = {**store.commit(name, before, after, opt, choice, value, d), "table": opt.table}
         self._activate(self._build(self.workspace_label), self.workspace_label)
         return entry
 
     def rollback_fix(self, entry_id: str) -> dict:
-        entry = self.fix_store().rollback(entry_id)
+        store = next((st for _, st in self._stores() if any(e["id"] == entry_id for e in st.log())), self.fix_store())
+        entry = store.rollback(entry_id)
         self._activate(self._build(self.workspace_label), self.workspace_label)
         return entry
 
     def restore_table(self, table: str) -> int:
-        n = self.fix_store().restore_original(table)
+        store, name = self._route(table)
+        n = store.restore_original(name)
         self._activate(self._build(self.workspace_label), self.workspace_label)
         return n
 
@@ -459,7 +512,7 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._dataset(parts[1])
             if parts == ["examples"]:
                 gt = DEMO / "ground_truth.json"
-                demo = app.workspace_label == "demonstration" and gt.exists()
+                demo = app.workspace_label != "uploaded" and gt.exists()
                 return self._json([c["question"] for c in json.loads(gt.read_text(encoding="utf-8"))] if demo else [])
             if parts == ["history"]:
                 return self._json(app.history())
@@ -622,6 +675,8 @@ class Handler(SimpleHTTPRequestHandler):
                     app.use_demo()
                 elif body.get("uploaded"):
                     app.use_uploads()
+                elif body.get("both"):
+                    app.use_both()
                 else:
                     files = [(str(f["name"]), base64.b64decode(f["data_base64"], validate=True))
                              for f in body.get("files") or []]

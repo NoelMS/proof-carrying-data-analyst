@@ -175,3 +175,28 @@ def test_suggestion_failure_keeps_the_refusal(app, monkeypatch):
     monkeypatch.setattr(wf, "unblocking_fixes", lambda *a: 1 / 0)
     f = wf.Analyst(app.catalog, CFG, suggest_fixes=True).run("How many shipments were made in March 2024?").final
     assert f["status"] == "refused" and f["answerability"] == "AMBIGUOUS" and f["fixes"] == []
+
+
+def test_both_workspace_keeps_demo_tables_and_routes_fixes(app):
+    # an upload named like a demonstration table is renamed, never shadows it
+    app.add_uploads([("orders.csv", b"order_id,age\n1,63\n1,63\n2,37\n")])
+    assert app.workspace_label == "both"
+    assert {"orders", "orders_upload", "shipments"} <= set(app.catalog.tables)
+    assert app.catalog.profiles["orders"].rows == 612 and app.catalog.profiles["orders_upload"].rows == 3
+
+    dup = option(app, "duplicate_rows", "orders_upload")
+    app.apply_fix(dup["id"], None, None, app.preview_fix(dup["id"], None, None)["token"])
+    date = option(app, "ambiguous_date", "shipments")
+    app.apply_fix(date["id"], "dmy", None, app.preview_fix(date["id"], "dmy", None)["token"])
+    assert sorted(e["table"] for e in app.fixes()["log"]) == ["orders_upload", "shipments"]
+    assert [e["table"] for e in app.fix_store("uploaded").log()] == ["orders"]  # stored under the upload's own name
+    assert [e["table"] for e in app.fix_store("demonstration").log()] == ["shipments"]
+
+    app.use_uploads()  # each fix is seen in its own workspace too
+    assert app.catalog.profiles["orders"].rows == 2
+    app.use_both()
+    app.rollback_fix(next(e["id"] for e in app.fixes()["log"] if e["table"] == "orders_upload"))
+    assert app.catalog.profiles["orders_upload"].rows == 3
+    assert app.restore_table("shipments") == 1 and app.fixes()["log"] == []
+    restarted = App(CFG, history_dir=app.history_dir, uploads_dir=app.uploads_dir)
+    assert restarted.workspace_label == "both" and "orders_upload" in restarted.catalog.tables

@@ -93,11 +93,13 @@ def test_input_validation(base):
 def test_uploads_accumulate_persist_and_switch(base):
     enc = lambda b: base64.b64encode(b).decode()  # noqa: E731
     status, d = post(f"{base}/api/workspace", {"files": [{"name": "sales.csv", "data_base64": enc(b"sale_id,amount\n1,500\n2,750\n")}]})
-    assert status == 200 and [t["name"] for t in d["tables"]] == ["sales"]
+    names = [t["name"] for t in d["tables"]]
+    assert status == 200 and d["workspace"] == "both" and "sales" in names and "orders" in names  # demo stays usable
+    assert post(f"{base}/api/workspace", {"uploaded": True})[1]["workspace"] == "uploaded"
     rid, _ = run(base, "What is the total amount?", claim="1250")
     assert json.loads(get(f"{base}/api/analysis/{rid}")[2])["final"]["status"] == "verified"
     status, d = post(f"{base}/api/workspace", {"files": [{"name": "shops.csv", "data_base64": enc(b"shop_id,name\ns1,North\n")}]})
-    assert sorted(t["name"] for t in d["tables"]) == ["sales", "shops"]  # earlier upload kept
+    assert {"sales", "shops"} <= {t["name"] for t in d["tables"]}  # earlier upload kept
     assert post(f"{base}/api/workspace", {"files": [{"name": "x.csv", "data_base64": ""}]})[0] == 422
     assert sorted(u["name"] for u in json.loads(get(f"{base}/api/datasets")[2])["uploads"]) == ["sales.csv", "shops.csv"]
 
@@ -111,4 +113,5 @@ def test_uploads_accumulate_persist_and_switch(base):
     req = urllib.request.Request(f"{base}/api/uploads/shops.csv", method="DELETE")
     with urllib.request.urlopen(req) as r:
         assert [t["name"] for t in json.loads(r.read())["tables"]] == ["sales"]
+    assert post(f"{base}/api/workspace", {"both": True})[1]["workspace"] == "both"
     post(f"{base}/api/workspace", {"demo": True})

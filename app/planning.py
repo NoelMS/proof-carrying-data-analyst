@@ -71,7 +71,7 @@ def build_plan(question: str, spec: QuerySpec, a: Assessment, cat: Catalog) -> P
         c = a.currency
         s.append(f"Value = Decimal({measure}) x Decimal({c['rates_table']}.{c['rate_column']}) looked up by "
                  f"{base}.{c['source_column']} = {c['rates_table']}.{c['rates_key']}; assert every currency has a rate.")
-    elif measure and spec.aggregation in ("sum", "mean", "median"):
+    elif measure and spec.aggregation in ("sum", "mean", "median", "max", "min"):
         s.append(f"Value = Decimal({measure}).")
     if spec.ratio_filter:
         f = spec.ratio_filter
@@ -80,6 +80,7 @@ def build_plan(question: str, spec: QuerySpec, a: Assessment, cat: Catalog) -> P
         s.append(f"Growth = (sum {spec.growth_to} - sum {spec.growth_from}) / sum {spec.growth_from}; assert the base is non-zero.")
     else:
         agg = {"sum": "Sum of value", "mean": "Mean of value", "median": "Median of value",
+               "max": "Largest single value", "min": "Smallest single value",
                "count": "Count of rows", "count_distinct": f"Count of distinct {measure}"}[spec.aggregation]
         if spec.group_by:
             agg += f" per {_ref_desc(base, spec.group_by)}"

@@ -3,6 +3,8 @@ import pytest
 
 from app.question import parse_question, unexplained_terms
 from app.verification import normalize
+from app.workflow import Analyst
+from tests.conftest import CFG
 
 
 def spec(catalog, q):
@@ -84,3 +86,25 @@ def test_loose_question_verifies(analyst):
     assert normalize(st.final["numeric_value"]) == normalize([["Latin America", "195098.90"]])
     low = analyst.run("which region has the lowest sales in usd")
     assert low.verified and low.final["numeric_value"][0][0] == "North America"
+
+
+HEART = """patient,age,chol,sex
+1,63,233,1
+2,37,250,1
+3,41,204,0
+4,56,236,1
+"""
+
+
+@pytest.mark.parametrize("q,agg,value", [
+    ("oldest age in heart dataset", "max", "63"), ("youngest age", "min", "37"),
+    ("What is the maximum chol?", "max", "250"), ("lowest chol", "min", "204"),
+])
+def test_superlative_without_a_group_is_a_max_or_min(make_catalog, q, agg, value):
+    cat = make_catalog({"heart": HEART})
+    s = spec(cat, q)
+    assert s.aggregation == agg and not s.top_n, s
+    assert unexplained_terms(q, s, cat.tables, cat.profiles, cat.metrics) == []
+    st = Analyst(cat, CFG).run(q)
+    assert st.verified, st.final.get("reason")
+    assert normalize(st.final["numeric_value"]) == normalize(value)
