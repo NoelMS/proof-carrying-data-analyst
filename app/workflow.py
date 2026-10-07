@@ -26,10 +26,10 @@ from .llm import LLMError
 from .local_model import LocalInterpreter, differences, ollama_status
 from .planning import Plan, build_plan
 from .clarify import available_hint, suggest
-from .question import QuerySpec, blocked, catalog_summary, ground, parse_question
+from .question import QuerySpec, blocked, catalog_summary, ground, names_measure, parse_question
 from .sandbox import ExecutionResult, Sandbox
 from .security import is_instruction_like
-from .traps import Issue
+from .traps import DERIVED_TABLE_RE, Issue
 from .verification import Verification, verify
 
 log = logging.getLogger("pcda")
@@ -168,15 +168,28 @@ class Analyst:
             diff = differences(parsed, model_spec)
             parsed.notes.append(f"{name} agrees with this reading" if not diff
                                 else f"{name} read it differently ({', '.join(diff)}); the parser's reading is used")
-        elif not blocked(model_spec) and self._refs_exist(model_spec):
+        elif (parsed.unresolved and not parsed.ambiguities and not parsed.unsupported  # the rules could not read it,
+              and not blocked(model_spec) and self._refs_exist(model_spec)                # not: refused on purpose
+              and names_measure(st.question, model_spec, self.cat.tables, self.cat.metrics)
+              and not any(DERIVED_TABLE_RE.search(t) for t in self._tables_of(model_spec))):
             model_spec.notes = [f"read by the {name}: the rule-based parser could not read all of it"]
             st.spec, st.interpreter = model_spec, name
         else:
             st.spec, st.interpreter = parsed, "deterministic parser"
-            if blocked(model_spec):
+            if parsed.ambiguities or parsed.unsupported:
+                pass  # refused on purpose (ambiguous, a dropped qualifier): no model may pick a meaning
+            elif blocked(model_spec):
                 parsed.notes.append(f"{name} could not read it either")
-            else:
+            elif not self._refs_exist(model_spec):
                 parsed.notes.append(f"{name} referred to columns that do not exist; its reading was discarded")
+            else:
+                parsed.notes.append(f"{name} chose a measure or table the question does not name; its reading was discarded")
+
+    @staticmethod
+    def _tables_of(spec: QuerySpec) -> set[str]:
+        refs = [spec.group_by, spec.date_column] + [f.column for f in spec.filters]
+        refs += [spec.ratio_filter.column] if spec.ratio_filter else []
+        return {spec.table or ""} | {r.partition(".")[0] for r in refs if r}
 
     def _refs_exist(self, spec: QuerySpec) -> bool:
         tables = self.cat.tables

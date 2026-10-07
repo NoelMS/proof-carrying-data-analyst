@@ -134,3 +134,8 @@ def test_camel_case_and_abbreviated_columns(make_catalog, q, measure, agg, value
 def test_initials_never_come_from_superlatives_or_plain_words(make_catalog, q):
     cat = make_catalog({"heart": HEART_CAMEL})
     assert not Analyst(cat, CFG).run(q).verified
+
+
+def test_one_letter_words_do_not_break_column_matching(catalog):
+    for q in ["s revenue in usd", "what is the s s total"]:  # singular('s') is empty
+        spec(catalog, q)

@@ -129,7 +129,18 @@ With the local model, the code template is a safety net: if the model's attempts
 
 The launcher starts an installed Ollama that is not running, so the local model is found. It never installs anything by itself.
 
-**Fine-tuned question reader.** `training/` holds the data generator and Colab notebooks for `pcda-interpreter`, a model fine-tuned to read questions into a `QuerySpec`. Once installed with `scripts/install_local_model.py`, it reads questions for the local model automatically, and the agent model keeps writing the proofs.
+**Fine-tuned question reader.** `training/` holds the data generator and Colab notebooks for `pcda-interpreter`, a model fine-tuned to read questions into a `QuerySpec`. Once installed with `scripts/install_local_model.py`, it reads questions for the local model automatically, and the agent model keeps writing the proofs. The install script always writes its own Modelfile (temperature 0, the training chat template); a Modelfile exported next to the gguf is ignored.
+
+Measured with `scripts/eval_interpreter.py --limit 300` on held-out questions (schemas and wordings not used in training):
+
+| Reader | Exact reading | Field accuracy | Flags unanswerable correctly | Seconds per question |
+|---|---|---|---|---|
+| rule-based parser | 67.0% | 86.6% | 98.4% | instant |
+| `qwen2.5:1.5b` (not fine-tuned) | 6.0% | 61.6% | 29.0% | 1.2 |
+| `qwen2.5-coder:1.5b` (not fine-tuned) | 16.3% | 57.2% | 79.0% | 1.1 |
+| **`pcda-interpreter`** | **96.0%** | **99.5%** | **100%** | **0.6** |
+
+In the app the rules still read first, and the model's reading is used only when the rules could not read a word: never when they refused on purpose (ambiguous wording, a dropped qualifier). It must also pass the every-word guard, name columns that exist, measure something the question itself names, and not draw on a pre-aggregated table. Under that policy, correct readings on the same 300 questions rise from 61.3% to 72.0% (32 rescued, 0 wrong readings let through). Most of the remaining gap is synonyms the training data taught (for example "energy use" for a `kwh` column) that the guard deliberately refuses, because a synonym guess is how "profit" would become `amount`.
 
 ## Configuration
 
@@ -248,7 +259,7 @@ Exact duplicate rows (identical in every field, including the record ID) are cou
 python -m pytest -q
 ```
 
-The suite (219 tests) covers:
+The suite (225 tests) covers:
 - ingestion: malformed, empty or corrupted files, encodings, hostile column names
 - profiling and trap detection
 - sandbox isolation: environment secrets, subprocess, file reads and writes, network, ctypes, timeout, memory

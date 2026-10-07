@@ -213,3 +213,31 @@ def test_sandbox_used_for_every_execution(catalog, monkeypatch):
     monkeypatch.setattr(Sandbox, "run", lambda self, *a, **k: calls.append(k.get("trusted", False)) or real(self, *a, **k))
     Analyst(catalog, CFG).run("What is the total revenue in USD?")
     assert calls == [False, False, True]  # proof, reproduction, independent check
+
+
+REVENUE_USD = dict(metric_term="revenue", table="orders", measure="amount", currency="USD")
+
+
+@pytest.mark.parametrize("q,model_spec", [
+    ("What is the revenue in dollars?", REVENUE_USD),  # 'dollars' is ambiguous: no model may pick USD
+    ("What is the total revenue in USD in 2023 and 2024?",  # combined or each year: refused on purpose
+     dict(REVENUE_USD, date_column="orders.order_date", date_from="2023-01-01", date_to="2024-12-31")),
+    ("best selling products",  # the question never names a measure: 'quantity' would be the model's guess
+     dict(metric_term="sales", table="orders", measure="quantity", group_by="orders.product_id", top_n=1)),
+    ("What is the total reported revenue?",  # a pre-aggregated table is never a source of truth
+     dict(metric_term="revenue", table="summary_reports", measure="reported_revenue")),
+])
+def test_model_never_overrides_a_deliberate_refusal(catalog, q, model_spec):
+    a = Analyst(catalog, CFG)
+    a.llm = FakeModel(QuerySpec(**model_spec))
+    st = a.run(q)
+    assert st.final["status"] == "refused" and st.interpreter == "deterministic parser", (st.interpreter, st.final)
+
+
+def test_model_reads_a_word_the_rules_cannot(make_catalog):
+    cat = make_catalog({"heart": "id,Age,Chol\n1,63,233\n2,37,250\n3,41,204\n"})
+    a = Analyst(cat, CFG)
+    a.llm = FakeModel(QuerySpec(metric_term="cholesterol", table="heart", measure="Chol", aggregation="mean"))
+    st = a.run("avg cholestrol")  # a typo the rules cannot resolve; 'chol' names the column
+    assert st.verified and st.interpreter.startswith("local model"), st.final
+    assert st.final["numeric_value"] == "229.00"

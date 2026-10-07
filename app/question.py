@@ -80,7 +80,7 @@ def resolve_column(phrase: str, base: str | None, tables: dict, prefer_name=True
 
 def column_candidates(phrase: str, base: str | None, tables: dict, prefer_name=True) -> list[tuple]:
     """Every (rank, 'table.column') a phrase could name, best first."""
-    words = [singular(w) for w in re.findall(r"[a-z0-9]+", phrase.lower()) if w not in STOP]
+    words = [sw for w in re.findall(r"[a-z0-9]+", phrase.lower()) if w not in STOP and (sw := singular(w))]
     if not words:
         return []
     last, qual = words[-1], (words[0] if len(words) > 1 else None)
@@ -291,7 +291,8 @@ def _correct_typos(ql: str, vocab: set[str], notes: list[str], keep: set[str] = 
         if (len(w) < 5 or w in vocab or singular(w) in vocab or w in FILLER or w in NOT_TYPOS
                 or w.upper() in CURRENCIES or w in keep):
             continue
-        match = difflib.get_close_matches(w, vocab, n=1, cutoff=0.84)
+        swaps = {w[:i] + w[i + 1] + w[i] + w[i + 2:] for i in range(len(w) - 1)}  # 'regoin' -> 'region'
+        match = sorted(swaps & vocab)[:1] or difflib.get_close_matches(w, vocab, n=1, cutoff=0.84)
         if match:
             ql = re.sub(rf"\b{w}\b", match[0], ql)
             notes.append(f"'{w}' read as '{match[0]}'")
@@ -538,7 +539,10 @@ GRAMMAR = {"what", "whats", "which", "who", "whom", "whose", "how", "much", "man
            "overall", "value", "values", "data", "dataset", "figure", "made", "placed", "recorded", "generated",
            "earned", "brought", "sold", "record", "records", "row", "rows", "entry", "entries", "unit", "up",
            "breakdown", "split", "grouped", "group", "us", "selling", "sell", "sells", "came", "come", "comes",
-           "through", "via", "make", "makes"}
+           "through", "via", "make", "makes",
+           # request wording: "I'd like to know", "could you work out", "hey, quick question", "please report"
+           "d", "like", "know", "could", "would", "can", "work", "out", "hey", "hi", "quick", "question", "report",
+           "want", "need", "u", "ur", "pls", "plz"}
 AGG_WORDS = {"mean": {"average", "avg", "mean"}, "median": {"median"},
              "max": MAX_WORDS, "min": MIN_WORDS, "sum": {"sum", "combined"},
              "count": {"count", "number", "many"}, "count_distinct": {"count", "number", "many", "distinct", "unique",
@@ -552,6 +556,22 @@ def blocked(spec: QuerySpec) -> bool:
 
 def vocabulary(tables: dict, metrics: dict) -> set[str]:
     return _vocabulary(tables, metrics)
+
+
+def names_measure(question: str, spec: QuerySpec, tables: dict, metrics: dict) -> bool:
+    """Does the question itself name what `spec` measures? A model may only fill in a reading for wording the rules
+    could not read; it may not pick the measure ('best selling' -> quantity) or a metric the data does not define."""
+    toks = set(_tokens(_correct_typos(question.lower(), _vocabulary(tables, metrics), [])))
+    key = _metric_names(metrics).get((spec.metric_term or "").lower())
+    if key and metrics[key].get("table") == spec.table and any(set(_tokens(n)) <= toks for n in [key, *metrics[key].get("aliases", [])]):
+        return True
+    if spec.ratio_filter or spec.aggregation in ("count", "count_distinct"):  # counts name their entity (table)
+        return bool(_name_words(spec.table or "") & toks)
+    if not spec.measure:
+        return False
+    stems = {w for w in col_words(spec.measure) if len(w) >= 4}
+    return bool(_name_words(spec.measure) & toks or acronym_words(sorted(toks), spec.measure) or acronym_words(
+        _tokens(question.lower()), spec.measure) or any(t.startswith(st) for t in toks for st in stems))
 
 
 def ground(question: str, spec: QuerySpec, tables: dict, profiles: dict, metrics: dict) -> QuerySpec:
@@ -596,6 +616,8 @@ def unexplained_terms(question: str, spec: QuerySpec, tables: dict, profiles: di
         data |= _name_words(r.split(".", 1)[-1])  # a model may omit the table
     for c in [r.split(".", 1)[-1] for r in filter(None, refs)] + [spec.measure or ""]:
         data |= acronym_words(_tokens(ql), c)  # 'heart rate' names MaxHR only by its initials
+        stems = {w for w in col_words(c) if len(w) >= 4}  # 'cholesterol' for a column named Chol
+        data |= {t for t in _tokens(ql) if any(t.startswith(st) for st in stems)}
     if spec.measure:
         data |= _name_words(spec.measure)
         if spec.table in tables and (unit_col := unit_column_for(tables[spec.table], spec.measure)):
@@ -630,9 +652,10 @@ def unexplained_terms(question: str, spec: QuerySpec, tables: dict, profiles: di
     elif spec.time_grain == "year":
         explained |= {"year", "years", "yearly", "annual", "annually"}
     if spec.growth_from:
-        explained |= {"growth", "grow", "grew", "change", "increase", "decrease", "rise", "fall", "vs", "versus"}
+        explained |= {"growth", "grow", "grew", "change", "increase", "decrease", "rise", "fall", "vs", "versus",
+                      "percentage", "percent", "pct"}
     if spec.top_n:
-        explained |= DESC_WORDS | ASC_WORDS | {"top", "bottom", "first", str(spec.top_n)}
+        explained |= DESC_WORDS | ASC_WORDS | {"top", "bottom", "first", "rank", "ranked", "ranking", str(spec.top_n)}
     if spec.ratio_filter:
         explained |= {"rate", "percentage", "percent", "share", "proportion", "fraction", "ratio"}
 

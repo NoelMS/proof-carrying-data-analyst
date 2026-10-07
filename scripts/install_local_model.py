@@ -40,11 +40,14 @@ def main():
                 break
         else:
             sys.exit("Could not start the Ollama server.")
-    modelfile = gguf.parent / "Modelfile"
-    if not modelfile.exists():
-        modelfile.write_text(TEMPLATE.replace("FROM ./MODEL.gguf", f"FROM ./{gguf.name}"), encoding="utf-8")
+    # Always our own Modelfile (temperature 0, the chat template the model was trained with). A Modelfile exported
+    # next to the gguf is ignored: Unsloth's default samples at temperature 1.5 and names another file.
+    work = Path(tempfile.mkdtemp(prefix="pcda_modelfile_"))
+    modelfile = work / "Modelfile"
+    modelfile.write_text(TEMPLATE.replace("FROM ./MODEL.gguf", f"FROM {gguf.as_posix()}"), encoding="utf-8")
     print(f"Creating Ollama model '{args.name}' from {gguf.name} ...")
-    subprocess.run([ollama, "create", args.name, "-f", str(modelfile)], cwd=gguf.parent, check=True)
+    subprocess.run([ollama, "create", args.name, "-f", str(modelfile)], cwd=work, check=True)
+    shutil.rmtree(work, ignore_errors=True)
 
     cat = build_catalog(load_directory(ROOT / "data" / "synthetic", Path(tempfile.mkdtemp())))
     summary = catalog_summary(cat.tables, cat.profiles, cat.relationships, cat.metrics)
