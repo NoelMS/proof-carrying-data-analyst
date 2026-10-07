@@ -502,7 +502,8 @@ class Handler(SimpleHTTPRequestHandler):
         app, cat, cfg = self.app, self.app.catalog, self.app.cfg
         return {
             "product": "Proof-Carrying Data Analyst",
-            "interpreter": f"Claude ({cfg.llm_model})" if cfg.llm_provider == "anthropic" else "Deterministic parser",
+            "interpreter": {"anthropic": f"Claude ({cfg.llm_model})", "gemini": f"Gemini ({cfg.gemini_model.split(',')[0]})",
+                            "local": f"Local model ({cfg.local_model})"}.get(cfg.llm_provider, "Deterministic parser"),
             "sandbox": {"provider": cfg.sandbox, "timeout_s": cfg.timeout_s, "memory_mb": cfg.memory_mb, **app.sandbox_probe},
             "max_repairs": cfg.max_repairs,
             "workspace": app.workspace_label,

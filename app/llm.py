@@ -40,9 +40,10 @@ class CodeDraft(BaseModel):
 
 
 class ClaudeClient:
-    def __init__(self, model: str):
+    def __init__(self, model: str, timeout: float = 600.0):
         self.model = model
-        self.client = anthropic.Anthropic()
+        # one attempt within `timeout`; a slow answer falls back to the parser / template instead of waiting
+        self.client = anthropic.Anthropic(timeout=timeout, max_retries=0)
 
     def _parse(self, system: str, user: str, schema: type[BaseModel]) -> BaseModel:
         try:
@@ -52,6 +53,8 @@ class ClaudeClient:
                 output_format=schema, output_config={"effort": "medium"},
                 betas=["server-side-fallback-2026-07-01"], fallbacks="default",
             )
+        except anthropic.APITimeoutError as e:
+            raise LLMError(f"Claude took longer than {self.client.timeout}s") from e
         except anthropic.APIConnectionError as e:
             raise LLMError(f"model unreachable: {e}") from e
         except anthropic.APIStatusError as e:

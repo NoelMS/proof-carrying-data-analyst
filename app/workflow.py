@@ -9,6 +9,7 @@ Each stage reads and writes an explicit AnalysisState; the stage log records
 what happened without exposing any model reasoning.
 """
 import json
+import os
 import logging
 import time
 import uuid
@@ -22,10 +23,11 @@ from .catalog import Catalog
 from .codegen import pandas_proof
 from .config import Config
 from .fixes import unblocking_fixes
+from .gemini import GeminiClient
 from .llm import ClaudeClient, LLMError
 from .local_model import LocalInterpreter, differences
 from .planning import Plan, build_plan
-from .question import QuerySpec, catalog_summary, parse_question
+from .question import QuerySpec, catalog_summary, normalize_refs, parse_question
 from .sandbox import ExecutionResult, Sandbox
 from .traps import Issue
 from .verification import Verification, verify
@@ -102,7 +104,10 @@ class Analyst:
         self.suggest_fixes = suggest_fixes
         self.sandbox = Sandbox(self.cfg)
         if self.cfg.llm_provider == "anthropic":
-            self.llm = ClaudeClient(self.cfg.llm_model)
+            self.llm = ClaudeClient(self.cfg.llm_model, timeout=self.cfg.llm_timeout_s)
+        elif self.cfg.llm_provider == "gemini":
+            self.llm = GeminiClient(self.cfg.gemini_model, os.environ.get("GEMINI_API_KEY", ""),
+                                    timeout=self.cfg.llm_timeout_s)
         elif self.cfg.llm_provider == "local":
             self.llm = LocalInterpreter(self.cfg.local_model, self.cfg.ollama_url)
         else:
@@ -140,9 +145,10 @@ class Analyst:
             return self._interpret_local(st)
         if self.llm:
             try:
-                st.spec = self.llm.interpret(st.question, catalog_summary(
-                    self.cat.tables, self.cat.profiles, self.cat.relationships, self.cat.metrics))
-                st.interpreter = f"model ({self.cfg.llm_model})"
+                st.spec = normalize_refs(self.llm.interpret(st.question, catalog_summary(
+                    self.cat.tables, self.cat.profiles, self.cat.relationships, self.cat.metrics)),
+                    self.cat.tables, self.cat.profiles)
+                st.interpreter = getattr(self.llm, "label", f"model ({self.cfg.llm_model})")
                 return "assess"
             except LLMError as e:
                 st.interpreter = f"deterministic parser (model unavailable: {e})"

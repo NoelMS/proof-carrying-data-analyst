@@ -374,3 +374,21 @@ def compact_catalog(summary: dict) -> str:
             aliases = d.get("aliases") or []
             lines.append(f"- {name}: {body}" + (f"; also called {', '.join(aliases)}" if aliases else ""))
     return "\n".join(lines)
+
+
+def normalize_refs(spec: QuerySpec, tables: dict, profiles: dict[str, TableProfile]) -> QuerySpec:
+    """Tidy a model-written spec's references into the form the checks expect, without changing its meaning:
+    `measure` is a bare column of `table` ('orders.amount' -> 'amount'); other references are 'table.column'
+    (a bare column of the base table gets the table prefix); a distinct count with no column counts the key."""
+    t = spec.table
+    if spec.measure and "." in spec.measure and spec.measure.split(".", 1)[0] == t:
+        spec.measure = spec.measure.split(".", 1)[1]
+    if t in tables:
+        for field in ("group_by", "date_column"):
+            ref = getattr(spec, field)
+            if ref and "." not in ref and ref in tables[t].columns:
+                setattr(spec, field, f"{t}.{ref}")
+        if spec.aggregation == "count_distinct" and not spec.measure:
+            key = profiles[t].key
+            spec.measure, spec.aggregation = (key, "count_distinct") if key else (None, "count")
+    return spec
