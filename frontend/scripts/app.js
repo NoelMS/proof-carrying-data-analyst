@@ -122,15 +122,15 @@ function initShortcuts() {
   });
 }
 
-/* ---------------------------------------------------------------- intro (first visit per session, under 1.1 s) */
+/* ---------------------------------------------------------------- intro (first visit per session, 3 s) */
 function intro() {
   let seen = true;
   try { seen = sessionStorage.getItem("pcda-intro") === "1"; sessionStorage.setItem("pcda-intro", "1"); } catch { /* storage unavailable */ }
   if (seen || reducedMotion()) return;
   const el = document.getElementById("intro");
   el.hidden = false;
-  setTimeout(() => el.classList.add("is-leaving"), 800);
-  setTimeout(() => { el.hidden = true; }, 1080);
+  setTimeout(() => el.classList.add("is-leaving"), 2500);
+  setTimeout(() => { el.hidden = true; }, 3000);
 }
 
 /* ---------------------------------------------------------------- theme (dark by default) */
