@@ -35,12 +35,29 @@ def unit_column_for(df: pd.DataFrame, measure: str) -> str | None:
     return next((u for u in units if u.lower().startswith(measure.lower())), units[0] if len(units) == 1 else None)
 
 
+def label_variant_pairs(values) -> list[tuple[str, str]]:
+    """(short, full) labels that may name the same thing: 'EU' / 'Europe', 'NA' / 'North America'.
+    Only an all-caps short label that is the prefix or the initials of another label counts."""
+    vals = [v for v in values if v]
+    out = []
+    for short in vals:
+        if not (2 <= len(short) <= 4 and short.isalpha() and short.isupper()):
+            continue
+        for full in vals:
+            words = full.split()
+            if full == short or len(full) <= len(short):
+                continue
+            if full.upper().startswith(short) or "".join(w[0] for w in words).upper() == short:
+                out.append((short, full))
+    return out
+
+
 def _date_col(p: TableProfile) -> str | None:
     return next((c for c, cp in p.columns.items() if cp.kind in ("date", "datetime")), None)
 
 
 def detect_issues(tables: dict[str, pd.DataFrame], profiles: dict[str, TableProfile],
-                  rels: list[Relationship]) -> list[Issue]:
+                  rels: list[Relationship], normalized: list | None = None) -> list[Issue]:
     out: list[Issue] = []
     for name, df in tables.items():
         p = profiles[name]
@@ -75,11 +92,16 @@ def detect_issues(tables: dict[str, pd.DataFrame], profiles: dict[str, TableProf
                 out.append(Issue("negative_values", name, c, f"Negative values present (min {cp.min})."))
             if UNIT_COL_RE.search(c.lower()) and 1 < cp.unique <= 20:
                 out.append(Issue("mixed_units", name, c, f"Multiple units: {', '.join(sorted(cp.top_values))}."))
+            if cp.kind == "text" and cp.top_values and (pairs := label_variant_pairs(cp.top_values)):
+                shown = "; ".join(f"'{a}' / '{b}'" for a, b in pairs[:3])
+                out.append(Issue("label_variants", name, c, f"Labels that may name the same thing: {shown}."))
             if cp.kind == "text":
                 hits = int(df[c].map(is_instruction_like).sum())
                 if hits:
                     out.append(Issue("prompt_injection", name, c,
                                      f"{hits} value(s) contain instruction-like text; treated strictly as data."))
+    for t, c, what in normalized or []:
+        out.append(Issue("normalized", t, c, what + ".", "info"))
     for r in rels:
         if r.unmatched:
             out.append(Issue("orphan_keys", r.child, r.column,

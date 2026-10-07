@@ -28,4 +28,4 @@ class Catalog:
 
 def build_catalog(ws: Workspace) -> Catalog:
     profiles, rels = profile_workspace(ws.tables)
-    return Catalog(ws, profiles, rels, detect_issues(ws.tables, profiles, rels))
+    return Catalog(ws, profiles, rels, detect_issues(ws.tables, profiles, rels, ws.normalized))

@@ -22,6 +22,7 @@ from .catalog import Catalog, build_catalog
 from .ingestion import Workspace
 from .profiling import SLASH_RE
 from .security import is_instruction_like
+from .traps import label_variant_pairs
 
 PREVIEW_ROWS = 50
 UNIT_FACTORS = {  # to a base unit per dimension; exact definitions
@@ -105,6 +106,9 @@ def propose(cat: Catalog) -> list[FixOption]:
             out.append(FixOption(fid, i.kind, t, c, f"Remove instruction-like text in {c}",
                                  "Replace values that read like instructions with '[removed]'. "
                                  "They are already ignored during analysis; this cleans the data itself."))
+        elif i.kind == "label_variants":
+            out.append(FixOption(fid, i.kind, t, c, f"Merge label variants in {c}",
+                                 f"{i.detail} Rewrite each short label as the full one, only if they are the same."))
         elif i.kind == "negative_values":
             out.append(FixOption(fid, i.kind, t, c, f"Remove rows with negative {c}",
                                  f"{i.detail} Only do this if negative values are errors, not returns or refunds."))
@@ -170,6 +174,11 @@ def transform(cat: Catalog, opt: FixOption, choice: str | None, value: str | Non
         return df
     if k == "negative_values":
         return df[~df[c].str.strip().str.startswith("-")]
+    if k == "label_variants":
+        pairs = label_variant_pairs(sorted(set(df[c])))
+        mapping = {a: b for a, b in pairs if sum(1 for x, _ in pairs if x == a) == 1}  # one possible full name only
+        df[c] = df[c].map(lambda v: mapping.get(v, v))
+        return df
     raise FixError(f"No fix is available for {k}.")
 
 
@@ -283,7 +292,7 @@ def _relevant(cat: Catalog, spec, opt: FixOption) -> bool:
                 todo.append(r.parent)
     if opt.kind in TABLE_FIXES:
         return opt.table in reach
-    if opt.kind not in ("ambiguous_date", "inconsistent_date_format", "missing_values", "mixed_units"):
+    if opt.kind not in ("ambiguous_date", "inconsistent_date_format", "missing_values", "mixed_units", "label_variants"):
         return False
     refs = {spec.group_by, spec.date_column, *(f.column for f in spec.filters)}
     refs |= {spec.ratio_filter.column} if spec.ratio_filter else set()

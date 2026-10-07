@@ -185,6 +185,7 @@ class App:
         for term, d in up.metrics.items():  # the demonstration's definitions win a name clash
             ws.metrics.setdefault(term, {**d, "table": renamed.get(d.get("table"), d.get("table"))})
         ws.notes += up.notes
+        ws.normalized += [(renamed.get(t, t), c, what) for t, c, what in up.normalized]
         shutil.rmtree(up.root, ignore_errors=True)
         cat = build_catalog(ws)
         cat.origin = origin
@@ -407,7 +408,9 @@ class App:
                 "     pandas installed).\n"
                 "  2. Any Python 3.10+:  pip install -r requirements.txt  then  python proof.py\n\n"
                 "Run it from this folder: the proof reads data/<table>.csv relative to the current directory.\n"
-                "Expected output: one line starting with RESULT: and the verified value.\n"))
+                "Expected output: one line starting with RESULT: and the verified value.\n"
+                + "".join(f"\nPrepared at upload: {t}.{c}: {what}." for t, c, what in cat.workspace.normalized
+                          if t in plan.tables)))
         return buf.getvalue()
 
     # ---------------------------------------------------------------- benchmark (background job with progress)

@@ -69,10 +69,24 @@ def test_more_traps(make_catalog):
         "shops": "shop_id,name\n1,A",
     })
     found = {(i.kind, i.column) for i in cat.issues}
-    assert ("currency_symbols", "price") in found
     assert ("negative_values", "qty") in found
-    assert ("inconsistent_date_format", "created") in found
     assert ("orphan_keys", "shop_id") in found
+    # '$5.00' is parsed, the symbol becomes a currency column, and '03/14/2024' (14 cannot be a month) becomes ISO;
+    # every change is recorded as an issue the analysis discloses
+    assert list(cat.tables["sales"]["price"]) == ["5.00", "7.00"] and set(cat.tables["sales"]["price_currency"]) == {"USD"}
+    assert list(cat.tables["sales"]["created"]) == ["2024-03-14", "2024-03-15"]
+    assert ("normalized", "price") in found and ("normalized", "created") in found
+
+
+def test_ambiguous_messiness_is_left_alone_and_flagged(make_catalog):
+    cat = make_catalog({"t": 'id,amount,day,region\n1,"1,200.50",05/01/2024,Europe\n2,"1.200,50",2024-02-01,EU\n'
+                             "3,N/A,Jan 7 2024,europe "})
+    t = cat.tables["t"]
+    assert list(t["amount"]) == ["1,200.50", "1.200,50", ""]  # which separator is which cannot be known
+    assert list(t["day"]) == ["05/01/2024", "2024-02-01", "Jan 7 2024"]  # 05/01 could be May or January
+    assert list(t["region"]) == ["Europe", "EU", "Europe"]  # case and spacing merged, 'EU' never guessed
+    found = {(i.kind, i.column) for i in cat.issues}
+    assert ("inconsistent_date_format", "day") in found and ("label_variants", "region") in found
 
 
 def test_model_context_withholds_injected_text(catalog):

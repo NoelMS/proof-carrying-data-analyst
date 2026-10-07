@@ -13,6 +13,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from .normalize import normalize_table
+
 READERS = {".csv": "csv", ".xlsx": "excel", ".xlsm": "excel"}  # extend here for new formats
 _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 
@@ -27,6 +29,7 @@ class Workspace:
     tables: dict[str, pd.DataFrame]
     metrics: dict = field(default_factory=dict)  # business definitions supplied with the data
     notes: list[str] = field(default_factory=list)
+    normalized: list[tuple[str, str, str]] = field(default_factory=list)  # (table, column, what changed)
 
     @property
     def data_dir(self) -> Path:
@@ -109,6 +112,8 @@ def build_workspace(files: list[Path], dest: Path | None = None) -> Workspace:
             if name in ws.tables:
                 raise IngestionError(f"Two inputs map to the same table name '{name}'.")
             df = df.fillna("").astype(str)
+            df, changes = normalize_table(df)
+            ws.normalized += [(name, c, what) for c, what in changes]
             df.to_csv(ws.data_dir / f"{name}.csv", index=False)
             ws.tables[name] = df
     if not ws.tables:

@@ -87,6 +87,13 @@ def _check_refs(spec: QuerySpec, cat: Catalog, a: Assessment) -> bool:
 def assess(spec: QuerySpec, cat: Catalog) -> Assessment:
     a = Assessment()
     for term in spec.unresolved:
+        named = [(t, c, cp.kind) for t, p in cat.profiles.items() for c, cp in p.columns.items()
+                 if c.lower().replace("_", " ") == term.lower() and cp.kind not in ("integer", "decimal")]
+        if named:  # the column exists; it just holds no numbers to calculate with
+            t, c, kind = named[0]
+            a.block(UNSUPPORTED, f"{t}.{c} exists but holds {kind} values, not numbers, so it cannot be "
+                                 "summed or averaged.")
+            continue
         a.block(INSUFFICIENT, f"No column, value or metric definition for '{term}' exists in the data, so that part "
                               "of the question cannot be answered without guessing.")
     for reason in spec.ambiguities:
@@ -121,6 +128,14 @@ def assess(spec: QuerySpec, cat: Catalog) -> Assessment:
             if step not in a.joins:
                 a.joins.append(step)
                 a.tables.append(step[2])
+
+    # labels that may name the same thing ('EU' / 'Europe') would split or miss a group
+    for ref in filter(None, [spec.group_by] + [f.column for f in spec.filters]):
+        t, c = _split(ref)
+        for issue in cat.issues:
+            if issue.kind == "label_variants" and issue.table == t and issue.column == c:
+                a.block(AMBIGUOUS, f"{t}.{c}: {issue.detail[:-1]}. Grouping or filtering on it would treat them as "
+                                   "different; merge them first if they are the same.")
 
     # record integrity of every table used
     for t in a.tables:
@@ -174,7 +189,7 @@ def assess(spec: QuerySpec, cat: Catalog) -> Assessment:
         if cat.profiles[t].columns[c].nulls:
             a.block(INSUFFICIENT, f"{spec.ratio_filter.column} has missing values; the rate's denominator is unclear.")
     for issue in cat.issues_for(a.tables):
-        if issue.kind in ("prompt_injection", "temporal_contradiction", "negative_values", "derived_table"):
+        if issue.kind in ("prompt_injection", "temporal_contradiction", "negative_values", "derived_table", "normalized"):
             a.diagnostics.append(f"{issue.table}.{issue.column or ''}: {issue.detail}".replace(".:", ":"))
     if spec.kind in ("ratio", "growth"):
         a.precision = 4
