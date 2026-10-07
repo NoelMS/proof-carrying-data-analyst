@@ -190,7 +190,8 @@ def main():
     metrics = {
         "revenue": {"table": "orders", "column": "amount", "aggregation": "sum",
                     "description": "Order amount (quantity x unit price) in the order currency.",
-                    "aliases": ["sales", "turnover", "income", "earnings", "takings"]},
+                    "aliases": ["sales", "turnover", "income", "earnings", "takings", "spend", "spent", "spends",
+                                "spending"]},
         "order value": {"table": "orders", "column": "amount", "aggregation": "mean",
                         "description": "Amount of a single order.",
                         "aliases": ["order size", "basket size", "aov", "ticket size"]},

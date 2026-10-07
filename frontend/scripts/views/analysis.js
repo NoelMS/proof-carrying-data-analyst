@@ -336,11 +336,15 @@ function openProof() {
 function refusedStage(s) {
   const f = s.final;
   const failed = failedAttempt(s);
+  const clarify = f.suggestions?.length > 0;
   return h("section", { class: "stage", "aria-label": "Refusal" },
-    h("div", { class: "stage__label" }, h("span", { class: "verdict verdict--refused" }, "Cannot determine"),
+    h("div", { class: "stage__label" },
+      h("span", { class: "verdict verdict--refused" }, clarify ? "Needs a more specific question" : "Cannot determine"),
       marker(STATE_LABEL[f.answerability] || f.answerability, "neutral")),
     h("h2", { class: "stage__headline" }, f.answer),
     h("p", { class: "refusal__reason" }, f.reason),
+    clarify && suggestions(f.suggestions),
+    f.hint && h("p", { class: "meta", style: { "margin-top": "var(--space-4)" } }, f.hint),
     (f.also?.length || failed) && h("div", { class: "refusal__why" },
       h("p", { class: "eyebrow" }, "Why"),
       f.also?.map((r) => h("p", {}, r)),
@@ -369,6 +373,29 @@ function unblockers(suggestions) {
           + (x.answerable ? "the question becomes answerable." : `clears one reason; still blocked by: ${x.remaining}`))),
         h("button", { class: "btn btn--secondary story__fix", type: "button", onclick: () => openFixDrawer(opt, pick.choice) },
           "Review this fix ", arrow()));
+    }));
+}
+
+/** Rewritten questions the data can answer; each was already checked and runs a normal verified analysis. */
+function suggestions(list) {
+  return h("div", { class: "refusal__why", style: { "margin-top": "var(--space-5)" } },
+    h("p", { class: "eyebrow" }, "Did you mean"),
+    h("p", { class: "meta" }, "Each of these was checked against the data and can be answered with a verified proof. Nothing is assumed until you pick one."),
+    list.map((x) => {
+      const btn = h("button", { class: "btn btn--secondary", type: "button", style: { "margin-top": "var(--space-3)", "text-align": "left" } },
+        x.question, " ", arrow());
+      btn.addEventListener("click", async () => {
+        btn.disabled = true;
+        try {
+          const { id } = await api.analyze(x.question, null);
+          update({ pending: { id, question: x.question } });
+          location.hash = `#/analysis/${id}`;
+        } catch (e) {
+          btn.disabled = false;
+          toast(e instanceof ConnectionError ? "Connection lost" : e.message, "error");
+        }
+      });
+      return h("div", {}, btn, h("p", { class: "meta" }, x.why));
     }));
 }
 

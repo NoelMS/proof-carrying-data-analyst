@@ -159,7 +159,8 @@ def assess(spec: QuerySpec, cat: Catalog) -> Assessment:
     if spec.measure and spec.aggregation in ("sum", "mean", "median") and not spec.ratio_filter:
         filtered = {f.column for f in spec.filters}
         for c, cp in cat.profiles[base].columns.items():
-            if STATUS_RE.fullmatch(c.lower()) and len(cp.top_values) > 1 and f"{base}.{c}" not in filtered:
+            if STATUS_RE.fullmatch(c.lower()) and len(cp.top_values) > 1 and f"{base}.{c}" not in filtered \
+                    and spec.group_by != f"{base}.{c}":  # one figure per status mixes nothing
                 a.block(AMBIGUOUS, f"{base}.{c} has the values {', '.join(sorted(cp.top_values))}; it is unclear "
                                    f"which {base} to include (for example '{next(iter(cp.top_values))} {base}').")
     for t, df in cat.tables.items():  # a pre-aggregated table states the same figure: say why it is not used
@@ -236,6 +237,9 @@ def _check_currency(spec: QuerySpec, cat: Catalog, a: Assessment):
         a.block(INSUFFICIENT, f"{(df[col] == '').sum()} row(s) in {spec.table} have no currency.")
         return
     found = sorted(set(df[col]))
+    if not target and spec.group_by == f"{spec.table}.{col}":  # one figure per currency: nothing is mixed
+        a.diagnostics.append(f"Each group is a single currency ({', '.join(found)}); amounts are not converted.")
+        return
     if not target:
         if len(found) > 1:
             a.block(AMBIGUOUS, f"Amounts are in {', '.join(found)}. Adding them without conversion is meaningless; "

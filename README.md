@@ -144,6 +144,8 @@ Every loose reading is listed with the result under **Read as**, so the interpre
 
 **Every word must be used.** Verification proves that the proof code computes the plan; it cannot show that the plan answers the question. So before anything runs, `unexplained_terms` (`app/question.py`) checks that every meaningful word of the question shaped the reading: the metric, a column, a value, a date, the currency, the ranking. A leftover word is a qualifier that would otherwise be silently dropped ("orders that were *cancelled*", "revenue *excluding refunds*", "*Q1* 2024", "2023 *and 2024*", "higher *than* 2023"), and the question is refused naming that word instead of answering a different question. Ambiguous wording is refused too: a column name found in several tables (`amount`), a currency name shared by several currencies ("dollars"), several values of one column ("web or partner"), and "average revenue per customer" (per order or per customer total?). Instruction-like sentences in the question are ignored, not obeyed.
 
+**Vague questions get "Did you mean".** A refusal caused by wording rather than by the data comes with up to four rewritten questions (`app/clarify.py`). Every rewrite has already passed interpretation, the every-word check and every answerability check, so choosing one runs a normal verified analysis; nothing is assumed until the user picks. Examples: "total revenue" → *in USD* or *by order currency* (no conversion); "revenue in dollars" → *in USD*; "total payment amount" → *completed / failed / pending payments* or *by status*; "web or partner" → each channel; "higher in 2024 than 2023" → *growth from 2023 to 2024*; "customer 001" → *customer C001*; "excluding refunds" (no refund data) → the question without it, labelled as such. A rewrite is never offered when it would change the meaning: dropping a negation ("not from web"), the subject, or most of the question, or rewriting a "why" or a forecast. Questions about something the data does not hold get a hint listing the metrics, numeric columns and entities it does hold. The refusal status and reason are unchanged, so benchmark scoring is unaffected.
+
 **With Claude**, interpretation and proof writing use the model with schema-validated structured output. The deterministic parser also reads every question, and both readings go through the same every-word check. If both are complete and disagree, the question is refused as ambiguous rather than trusting either; a model reading that leaves a word unused or maps a word to a merely similar column ("profit" to `amount`) is rejected. Model-written code is still policy-checked, sandboxed and verified against the deterministic DuckDB re-computation. If the model is unreachable, the run continues with the deterministic parser and the interpreter field says so.
 
 ## Data format
@@ -224,7 +226,7 @@ Exact duplicate rows (identical in every field, including the record ID) are cou
 python -m pytest -q
 ```
 
-The suite (185 tests) covers:
+The suite (199 tests) covers:
 - ingestion: malformed, empty or corrupted files, encodings, hostile column names
 - profiling and trap detection
 - sandbox isolation: environment secrets, subprocess, file reads and writes, network, ctypes, timeout, memory

@@ -250,11 +250,16 @@ NOT_TYPOS = {"last", "past", "next", "week", "weeks", "days", "quarter", "report
              "price", "prices", "value", "values", "order", "orders", "share"}
 
 
-def _correct_typos(ql: str, vocab: set[str], notes: list[str]) -> str:
+def _value_words(profiles: dict) -> set[str]:
+    """Words of categorical values ('pending', 'web'): real data, never a misspelling of something else."""
+    return {w for p in profiles.values() for cp in p.columns.values() for v in cp.top_values for w in _tokens(v)}
+
+
+def _correct_typos(ql: str, vocab: set[str], notes: list[str], keep: set[str] = frozenset()) -> str:
     """Replace likely misspellings of data words ('revnue' -> 'revenue') with stdlib fuzzy matching."""
     for w in sorted(set(re.findall(r"[a-z]+", ql))):
         if (len(w) < 5 or w in vocab or singular(w) in vocab or w in FILLER or w in NOT_TYPOS
-                or w.upper() in CURRENCIES):
+                or w.upper() in CURRENCIES or w in keep):
             continue
         match = difflib.get_close_matches(w, vocab, n=1, cutoff=0.84)
         if match:
@@ -343,7 +348,7 @@ def _count_fallback(ql: str, spec: QuerySpec, tables: dict, profiles: dict, orde
 def parse_question(question: str, tables: dict, profiles: dict[str, TableProfile], metrics: dict) -> QuerySpec:
     spec = QuerySpec()
     notes = spec.notes
-    ql = _correct_typos(question.strip().lower(), _vocabulary(tables, metrics), notes)
+    ql = _correct_typos(question.strip().lower(), _vocabulary(tables, metrics), notes, _value_words(profiles))
 
     spec.currency = _currency(ql)
     if not spec.currency and (w := next((t for t in _tokens(ql) if t in AMBIGUOUS_CURRENCY_WORDS), None)):
@@ -513,6 +518,23 @@ def vocabulary(tables: dict, metrics: dict) -> set[str]:
     return _vocabulary(tables, metrics)
 
 
+def ground(question: str, spec: QuerySpec, tables: dict, profiles: dict, metrics: dict) -> QuerySpec:
+    """Block a reading that leaves part of the question unused (see unexplained_terms). Returns `spec`."""
+    if blocked(spec):
+        return spec
+    left = unexplained_terms(question, spec, tables, profiles, metrics)
+    if not left:
+        return spec
+    vocab = _vocabulary(tables, metrics)
+    if any(w in vocab or w.isdigit() for w in left):  # known words used in a way the spec cannot express
+        words = ", ".join(repr(w) for w in left)
+        spec.unsupported.append(f"The question also says {words}, which this reading cannot use; answering "
+                                "without it would answer a different question.")
+    else:
+        spec.unresolved.append(", ".join(left))
+    return spec
+
+
 def _name_words(name: str) -> set[str]:
     words = set(_tokens(name.replace("_", " ")))
     return words | {singular(w) for w in words}
@@ -526,7 +548,7 @@ def unexplained_terms(question: str, spec: QuerySpec, tables: dict, profiles: di
     customer C001", "failed", "in Q1", "excluding refunds") and would make the number answer a different
     question. Sentences that are instruction-like (prompt injection) are not part of the question."""
     sentences = [x for x in re.split(r"(?<=[.?!;])\s+|\n+", question) if x.strip() and not is_instruction_like(x)]
-    ql = _correct_typos(" ".join(sentences).lower(), _vocabulary(tables, metrics), [])
+    ql = _correct_typos(" ".join(sentences).lower(), _vocabulary(tables, metrics), [], _value_words(profiles))
     for d in {spec.date_from, spec.date_to} - {None}:
         ql = ql.replace(d, " ")
     refs = [spec.group_by, spec.date_column] + [f.column for f in spec.filters]

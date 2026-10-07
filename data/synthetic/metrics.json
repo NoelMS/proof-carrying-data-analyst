@@ -9,7 +9,11 @@
       "turnover",
       "income",
       "earnings",
-      "takings"
+      "takings",
+      "spend",
+      "spent",
+      "spends",
+      "spending"
     ]
   },
   "order value": {

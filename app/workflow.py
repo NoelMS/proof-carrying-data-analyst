@@ -25,7 +25,8 @@ from .fixes import unblocking_fixes
 from .llm import ClaudeClient, LLMError
 from .local_model import LocalInterpreter, differences
 from .planning import Plan, build_plan
-from .question import QuerySpec, blocked, catalog_summary, parse_question, unexplained_terms, vocabulary
+from .clarify import available_hint, suggest
+from .question import QuerySpec, blocked, catalog_summary, ground, parse_question
 from .sandbox import ExecutionResult, Sandbox
 from .security import is_instruction_like
 from .traps import Issue
@@ -151,19 +152,7 @@ class Analyst:
 
     def _ground(self, question: str, spec: QuerySpec) -> QuerySpec:
         """Refuse a reading that leaves part of the question unused, whoever produced it (see unexplained_terms)."""
-        if blocked(spec):
-            return spec
-        left = unexplained_terms(question, spec, self.cat.tables, self.cat.profiles, self.cat.metrics)
-        if not left:
-            return spec
-        vocab = vocabulary(self.cat.tables, self.cat.metrics)
-        if any(w in vocab or w.isdigit() for w in left):  # known words used in a way the spec cannot express
-            words = ", ".join(repr(w) for w in left)
-            spec.unsupported.append(f"The question also says {words}, which this reading cannot use; answering "
-                                    "without it would answer a different question.")
-        else:
-            spec.unresolved.append(", ".join(left))
-        return spec
+        return ground(question, spec, self.cat.tables, self.cat.profiles, self.cat.metrics)
 
     def _interpret_model(self, st: AnalysisState, parsed: QuerySpec):
         """Claude and the rule-based parser both read the question. Both readings must account for every word;
@@ -231,6 +220,12 @@ class Analyst:
         st.detected_issues = self.cat.issues_for(st.datasets)
         if not a.answerable:
             st.final = self._refusal(st, a.reasons[0], a.reasons[1:])
+            try:  # vague wording: offer rewritten questions that are already known to be answerable
+                st.final["suggestions"] = suggest(st.question, st.spec, a, self.cat)
+                st.final["hint"] = None if st.final["suggestions"] else available_hint(st.spec, a, self.cat)
+            except Exception:  # suggestions are optional; never replace the refusal's real reason
+                log.exception("clarification suggestions failed")
+                st.final["suggestions"], st.final["hint"] = [], None
             if self.suggest_fixes:
                 try:
                     st.final["fixes"] = unblocking_fixes(self.cat, st.spec)
