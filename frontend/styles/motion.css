@@ -50,9 +50,9 @@
 @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } }
 
 /* intro: name, then line, then the app */
-.intro__name, .intro__line { animation: intro-rise 520ms var(--ease-out) both; }
-.intro__line { animation-delay: 220ms; }
-.intro.is-leaving { opacity: 0; transition: opacity 260ms var(--ease-in-out); }
+.intro__name, .intro__line { animation: intro-rise 1200ms var(--ease-out) both; }
+.intro__line { animation-delay: 600ms; }
+.intro.is-leaving { opacity: 0; transition: opacity 500ms var(--ease-in-out); }
 @keyframes intro-rise { from { opacity: 0; transform: translateY(12px); clip-path: inset(0 0 100% 0); } to { clip-path: inset(0 0 0 0); } }
 
 /* view transitions between routes */
