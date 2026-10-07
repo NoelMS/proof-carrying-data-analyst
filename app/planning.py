@@ -19,6 +19,7 @@ class Plan:
     precision: int
     column_kinds: dict[str, str]  # "table.column" -> profiled type, for every column the plan touches
     steps: list[str] = field(default_factory=list)
+    columns: dict[str, list[str]] = field(default_factory=dict)  # every column of each table read, by name
 
     @property
     def output(self) -> str:
@@ -37,7 +38,9 @@ class Plan:
                            f"ascending, first {self.spec.top_n} only"}[self.output]
 
     def text(self) -> str:
-        lines = [f"Question: {self.question}", "Files: " + ", ".join(f"data/{t}.csv" for t in self.tables), "Steps:"]
+        lines = [f"Question: {self.question}", "Files: " + ", ".join(f"data/{t}.csv" for t in self.tables)]
+        lines += [f"Columns of data/{t}.csv: {', '.join(cols)}" for t, cols in self.columns.items()]
+        lines.append("Steps:")
         lines += [f"{i}. {s}" for i, s in enumerate(self.steps, 1)]
         lines.append(f"Output: print one line 'RESULT: <json>' where <json> is {self.output_contract()}.")
         return "\n".join(lines)
@@ -54,6 +57,7 @@ def build_plan(question: str, spec: QuerySpec, a: Assessment, cat: Catalog) -> P
     refs += [f"{base}.{spec.measure}"] if spec.measure else []
     kinds = {r: cat.profiles[r.split(".")[0]].columns[r.split(".", 1)[1]].kind for r in refs}
     p = Plan(question, spec, base, a.tables, a.dedupe, a.joins, a.currency, a.unit, a.precision, kinds)
+    p.columns = {t: list(cat.tables[t].columns) for t in a.tables}
     s = p.steps
     for t in a.dedupe:
         s.append(f"Remove exact duplicate rows from {t}.")

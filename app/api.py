@@ -36,7 +36,7 @@ import threading
 import time
 import uuid
 import zipfile
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -47,7 +47,10 @@ from .catalog import Catalog, build_catalog
 from .answerability import assess
 from .config import Config
 from .fixes import FixError, FixStore, as_dict, diff, fingerprint, option_by_id, propose, transform
+from . import local_setup
 from .ingestion import READERS, IngestionError, build_workspace, load_directory, read_file
+from .local_model import ollama_status
+from .local_setup import DOWNLOAD_URL, ollama_exe
 from .planning import build_plan
 from .question import QuerySpec
 from .sandbox import Sandbox
@@ -104,6 +107,9 @@ class Run:
     cond: threading.Condition = field(default_factory=threading.Condition)
 
 
+MODES = {"local": "Local agent", "anthropic": "Claude agent", "none": "Rules only"}
+
+
 class App:
     """Three workspaces: the demonstration data, the user's uploads (which persist in `uploads_dir` and
     accumulate across uploads and restarts), and both together. The active choice is remembered too.
@@ -118,6 +124,8 @@ class App:
         self.lock = threading.Lock()
         self.runs: dict[str, Run] = {}
         self.bench: dict = {"running": False}
+        self.install_state: dict = {"running": False}
+        self._apply_saved_mode()
         self.workspace_label = "demonstration"
         self.catalog = self._build("demonstration")
         active = self._active_file.read_text().strip() if self._active_file.exists() else ""
@@ -445,6 +453,68 @@ class App:
                 self.bench["finished_at"] = time.time()
         threading.Thread(target=work, daemon=True).start()
 
+    # ---------------------------------------------------------------- agent mode and the local model
+    @property
+    def _mode_file(self) -> Path:
+        return self.uploads_dir.parent / "mode"
+
+    def saved_mode(self) -> str | None:
+        mode = self._mode_file.read_text().strip() if self._mode_file.exists() else ""
+        return mode if mode in MODES else None
+
+    def _apply_saved_mode(self):
+        """A mode chosen in the app replaces `auto`; an explicit PCDA_LLM_PROVIDER still wins."""
+        mode = self.saved_mode()
+        if mode and os.environ.get("PCDA_LLM_PROVIDER", "auto").strip() == "auto" and not self._unavailable(mode):
+            self.cfg = replace(self.cfg, llm_provider=mode)
+
+    def _unavailable(self, mode: str) -> str | None:
+        if mode == "anthropic" and not os.environ.get("ANTHROPIC_API_KEY"):
+            return "Claude needs ANTHROPIC_API_KEY in .env."
+        if mode == "local" and not ollama_status(self.cfg.local_model, self.cfg.ollama_url)["model_installed"]:
+            return f"The local model ({self.cfg.local_model}) is not installed yet: install it first."
+        return None
+
+    def set_mode(self, mode: str):
+        if mode not in MODES:
+            raise ValueError(f"Unknown mode '{mode}'.")
+        if why := self._unavailable(mode):
+            raise LookupError(why)
+        self.cfg = replace(self.cfg, llm_provider=mode)  # every analysis builds its Analyst from self.cfg
+        self._mode_file.write_text(mode)
+
+    def model_info(self) -> dict:
+        cfg = self.cfg
+        status = ollama_status(cfg.local_model, cfg.ollama_url)
+        return {"mode": cfg.llm_provider, "saved": self.saved_mode(), "agent_model": cfg.local_model,
+                "interpreter_model": cfg.interpreter_model,
+                "interpreter_installed": any(n.split(":")[0] == cfg.interpreter_model for n in status["models"]),
+                "ollama_running": status["reachable"], "ollama_installed": bool(status["reachable"] or ollama_exe()),
+                "model_installed": status["model_installed"], "claude_available": bool(os.environ.get("ANTHROPIC_API_KEY")),
+                "download_url": DOWNLOAD_URL, "install": self.install_state}
+
+    def start_install(self):
+        with self.lock:
+            if self.install_state.get("running"):
+                raise LookupError("The local model is already being installed.")
+            self.install_state = {"running": True, "message": "Starting…", "percent": None, "error": None, "done": False}
+
+        def progress(message: str, percent: float | None):
+            self.install_state.update(message=message, percent=percent)
+
+        def work():
+            try:
+                local_setup.install(self.cfg.local_model, self.cfg.ollama_url, progress)
+                self.set_mode("local")
+                self.install_state["done"] = True
+            except local_setup.SetupError as e:
+                self.install_state["error"] = str(e)
+            except Exception as e:  # surfaced in the panel, never silent
+                self.install_state["error"] = f"{type(e).__name__}: {e}"
+            finally:
+                self.install_state["running"] = False
+        threading.Thread(target=work, daemon=True).start()
+
 
 # ------------------------------------------------------------------ HTTP layer
 
@@ -519,6 +589,8 @@ class Handler(SimpleHTTPRequestHandler):
             if parts == ["benchmark"]:
                 f = app.results_file
                 return self._json(json.loads(f.read_text(encoding="utf-8")) if f.exists() else None)
+            if parts == ["model"]:
+                return self._json(app.model_info())
             if parts == ["benchmark", "progress"]:
                 return self._json({k: v for k, v in app.bench.items() if k != "report"})
             if parts == ["fixes"]:
@@ -555,7 +627,9 @@ class Handler(SimpleHTTPRequestHandler):
         app, cat, cfg = self.app, self.app.catalog, self.app.cfg
         return {
             "product": "Proof-Carrying Data Analyst",
-            "interpreter": f"Claude ({cfg.llm_model})" if cfg.llm_provider == "anthropic" else "Deterministic parser",
+            "interpreter": MODES[cfg.llm_provider] + {"anthropic": f" ({cfg.llm_model})",
+                                                     "local": f" ({cfg.local_model})"}.get(cfg.llm_provider, ""),
+            "mode": cfg.llm_provider, "mode_saved": app.saved_mode(),
             "sandbox": {"provider": cfg.sandbox, "timeout_s": cfg.timeout_s, "memory_mb": cfg.memory_mb, **app.sandbox_probe},
             "max_repairs": cfg.max_repairs,
             "workspace": app.workspace_label,
@@ -690,6 +764,20 @@ class Handler(SimpleHTTPRequestHandler):
             except (KeyError, TypeError, binascii.Error):
                 return self._error(HTTPStatus.BAD_REQUEST, "Each file needs a name and base64 data.")
             return self._json(self._datasets())
+        if parts == ["model", "install"]:
+            try:
+                app.start_install()
+            except LookupError as e:
+                return self._error(HTTPStatus.CONFLICT, str(e))
+            return self._json({"started": True}, HTTPStatus.ACCEPTED)
+        if parts == ["mode"]:
+            try:
+                app.set_mode(str(body.get("mode")))
+            except ValueError as e:
+                return self._error(HTTPStatus.BAD_REQUEST, str(e))
+            except LookupError as e:
+                return self._error(HTTPStatus.CONFLICT, str(e))
+            return self._json(app.model_info())
         if parts == ["benchmark", "cancel"]:
             try:
                 app.cancel_benchmark()
@@ -721,6 +809,8 @@ class Handler(SimpleHTTPRequestHandler):
 def create_server(host: str = "127.0.0.1", port: int = 8600, cfg: Config | None = None) -> ThreadingHTTPServer:
     """Port 0 picks a free port; read it back from `server.server_port`."""
     setup_logging()
+    if cfg is None:  # a real launch: an installed Ollama that is not running is started, so the agent is found
+        local_setup.start_server(os.environ.get("PCDA_OLLAMA_URL", Config.ollama_url), wait_s=8)
     Handler.app = App(cfg or Config.from_env())
     return ThreadingHTTPServer((host, port), Handler)
 

@@ -23,7 +23,7 @@ from .codegen import pandas_proof
 from .config import Config
 from .fixes import unblocking_fixes
 from .llm import ClaudeClient, LLMError
-from .local_model import LocalInterpreter, differences
+from .local_model import LocalInterpreter, differences, ollama_status
 from .planning import Plan, build_plan
 from .clarify import available_hint, suggest
 from .question import QuerySpec, blocked, catalog_summary, ground, parse_question
@@ -106,7 +106,9 @@ class Analyst:
         if self.cfg.llm_provider == "anthropic":
             self.llm = ClaudeClient(self.cfg.llm_model)
         elif self.cfg.llm_provider == "local":
-            self.llm = LocalInterpreter(self.cfg.local_model, self.cfg.ollama_url)
+            reader = self.cfg.interpreter_model  # the fine-tuned reader, once it has been installed
+            installed = ollama_status(reader, self.cfg.ollama_url)["model_installed"]
+            self.llm = LocalInterpreter(self.cfg.local_model, self.cfg.ollama_url, reader=reader if installed else None)
         else:
             self.llm = None
         self.code_writer = code_writer or self._default_writer
@@ -183,7 +185,7 @@ class Analyst:
         """Parser first; the local model reads what the parser cannot. A small model can misread a question
         the parser reads correctly, so the parser's complete reading always wins and a model that disagrees
         is only reported. Whatever is chosen still goes through every answerability check."""
-        name = f"local model ({self.cfg.local_model})"
+        name = f"local model ({self.llm.reader})"
         try:
             model_spec = self._ground(st.question, self.llm.interpret(st.question, catalog_summary(
                 self.cat.tables, self.cat.profiles, self.cat.relationships, self.cat.metrics)))
@@ -242,6 +244,8 @@ class Analyst:
     def _generate(self, st: AnalysisState) -> str:
         feedback = "; ".join(st.last.verification.failures()) if st.last and st.last.verification else \
             (st.last.failure_reason if st.last else None)
+        if feedback and st.last.source == "model":  # a repair edits the failed script instead of starting over
+            feedback += f"\nThe failed script:\n{st.last.code}"
         code, source = self.code_writer(st.plan, len(st.attempts) + 1, feedback)
         st.attempts.append(Attempt(len(st.attempts) + 1, source, code))
         return "execute"
@@ -258,8 +262,11 @@ class Analyst:
             return "answer"
         at.failure_reason = "; ".join(v.failures())
         only_claim = [c.name for c in v.checks if not c.passed] == ["claim_matches_execution"]
-        # the template is deterministic: regenerating it gives the same code, so a repair cannot help
-        if only_claim or at.source == "template" or len(st.attempts) > self.cfg.max_repairs:
+        # A model repairs its own code from this feedback, up to max_repairs times; after that the default writer
+        # makes one last attempt from the template. The template is deterministic, so it is never retried.
+        fallback_next = self.code_writer == self._default_writer and len(st.attempts) == self.cfg.max_repairs + 1
+        if only_claim or at.source.startswith("template") or (len(st.attempts) > self.cfg.max_repairs
+                                                               and not fallback_next):
             err = at.execution.error or ""
             if only_claim:
                 reason = (f"The claimed value {st.claimed_value} is contradicted by the executed proof, which gives "
@@ -285,7 +292,7 @@ class Analyst:
             "status": "verified", "answer": answer, "numeric_value": r, "unit": p.unit,
             "method": " ".join(p.steps), "proof_code": at.code, "execution_output": at.execution.stdout.strip(),
             "verification": at.verification.record(), "diagnostics": st.answerability.diagnostics,
-            "attempts": len(st.attempts),
+            "attempts": len(st.attempts), "proof_source": at.source,
         }
         return "done"
 
@@ -298,9 +305,13 @@ class Analyst:
                 "attempts": len(st.attempts)}
 
     def _default_writer(self, plan: Plan, attempt: int, feedback: str | None) -> tuple[str, str]:
-        if self.llm and hasattr(self.llm, "write_code"):  # the local model only reads questions
+        """The model writes the proof and repairs it from the verifier's feedback; the template is the safety net
+        once its attempts are used up or it is unavailable. Without a model the template is the only writer."""
+        if not (self.llm and hasattr(self.llm, "write_code")):
+            return pandas_proof(plan), "template"
+        if attempt <= self.cfg.max_repairs + 1:
             try:
                 return self.llm.write_code(plan.text(), feedback), "model"
-            except LLMError:
-                pass  # the template below implements the same plan; the attempt is labelled accordingly
-        return pandas_proof(plan), "template"
+            except LLMError as e:
+                log.warning("model could not write code: %s", e)
+        return pandas_proof(plan), "template (fallback)"

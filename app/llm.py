@@ -72,7 +72,12 @@ class ClaudeClient:
         return self._parse(SYSTEM_INTERPRET, user, QuerySpec)
 
     def write_code(self, plan_text: str, feedback: str | None = None) -> str:
-        user = f"<plan>\n{plan_text}\n</plan>"
-        if feedback:
-            user += f"\n\nThe previous script failed verification:\n<feedback>{feedback}</feedback>\nWrite a corrected script."
-        return self._parse(SYSTEM_CODE, user, CodeDraft).code
+        return self._parse(SYSTEM_CODE, code_prompt(plan_text, feedback), CodeDraft).code
+
+
+def code_prompt(plan_text: str, feedback: str | None = None) -> str:
+    """The request for a proof script; a repair also says why the previous script failed."""
+    user = f"<plan>\n{plan_text}\n</plan>"
+    if feedback:
+        user += f"\n\nThe previous script failed verification:\n<feedback>{feedback}</feedback>\nWrite a corrected script."
+    return user

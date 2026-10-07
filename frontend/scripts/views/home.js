@@ -1,5 +1,6 @@
 // Analytical workspace landing: the question surface and the data it can draw on.
 import { ConnectionError, WORKSPACES, api } from "../api.js";
+import { renderAgent } from "./agent.js";
 import { connectionLost } from "../components.js";
 import { arrow, fmtInt, h, pad, setTitle } from "../dom.js";
 import { reveal } from "../motion.js";
@@ -59,6 +60,7 @@ export function renderHome(main) {
 
   const dataCol = h("section", { "aria-labelledby": "available-data" });
   const exampleCol = h("section", { "aria-labelledby": "examples" });
+  const agentChoice = h("div");
 
   main.replaceChildren(h("div", { class: "view" },
     h("header", { class: "view__head" },
@@ -66,7 +68,9 @@ export function renderHome(main) {
       h("h1", { class: "title", tabindex: "-1" }, "Ask a question. ",
         h("span", { class: "title--muted" }, "We find the evidence, execute the calculation, and verify the result."))),
     form,
+    agentChoice,
     h("div", { class: "two-col section" }, dataCol, exampleCol)));
+  renderAgent(agentChoice, { compact: true });
 
   renderData(dataCol, store.datasets);
   api.examples().then((ex) => renderExamples(exampleCol, ex, input)).catch(() => {});

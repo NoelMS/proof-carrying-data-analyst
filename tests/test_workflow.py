@@ -150,7 +150,7 @@ def test_hostile_model_code_is_rejected_then_repaired(catalog):
     a.llm = FakeModel(QuerySpec(metric_term="revenue", table="orders", measure="amount", currency="USD"), [hostile])
     st = a.run("What is the total revenue in USD?")
     assert st.attempts[0].execution.status == "policy_rejected" and st.attempts[0].source == "model"
-    assert st.attempts[1].source == "template" and st.verified
+    assert st.attempts[1].source == "template (fallback)" and st.verified
 
 
 def test_model_reading_that_drops_a_qualifier_is_refused(catalog):

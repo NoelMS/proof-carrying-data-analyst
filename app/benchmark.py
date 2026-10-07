@@ -56,7 +56,7 @@ def run_benchmark(analyst: Analyst, cases: list[dict], progress=None, should_sto
                "expected_refusal": expected_refusal, "got_refusal": got_refusal,
                "confident_wrong": verified and not correct,
                "expected": case["expected"], "got": f.get("numeric_value"),
-               "attempts": len(st.attempts), "reproduced": repro,
+               "attempts": len(st.attempts), "proof_source": f.get("proof_source"), "reproduced": repro,
                "duration_s": round(time.monotonic() - tc, 2),
                "detail": f.get("answer") if verified else f.get("reason")}
         if repro is not None:

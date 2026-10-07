@@ -430,7 +430,9 @@ function renderAfter(host, s, id) {
     ["Duration", `${e.duration_s.toFixed(2)} s`],
     ["Exit code", String(e.exit_code)],
     ["Sandbox", store.status?.sandbox?.provider || "—"],
-    ["Attempts", String(s.attempts.length)],
+    ["Proof written by", { model: "the agent model", template: "code template (rules only)",
+                           "template (fallback)": "code template, after the model's attempts failed" }[at.source] || at.source],
+    ["Attempts", s.attempts.length > 1 ? `${s.attempts.length} (${s.attempts.length - 1} failed verification and were sent back with its feedback)` : "1"],
     extra,
   ]));
   setExecFacts(ex);

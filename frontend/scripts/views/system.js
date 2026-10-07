@@ -4,6 +4,7 @@ import { facts, marker, table, toast } from "../components.js";
 import { arrow, h, label, setTitle } from "../dom.js";
 import { reveal } from "../motion.js";
 import { store, update } from "../state.js";
+import { renderAgent } from "./agent.js";
 import { STATE_LABEL } from "./analysis.js";
 
 const CONTROLS = [
@@ -31,7 +32,7 @@ export function renderSystem(main) {
   setTitle("System");
   const s = store.status;
   if (!s) { main.replaceChildren(h("div", { class: "view" }, h("p", { class: "eyebrow" }, "Loading system status"))); return; }
-  const bench = h("div");
+  const bench = h("div"), agent = h("div");
   main.replaceChildren(h("div", { class: "view" },
     h("header", { class: "view__head" },
       h("p", { class: "eyebrow" }, "System"),
@@ -40,7 +41,7 @@ export function renderSystem(main) {
     h("section", {},
       h("div", { class: "section__head" }, h("h2", { class: "eyebrow" }, "Configuration")),
       facts([
-        ["Interpreter", s.interpreter],
+        ["Agent", s.interpreter],
         ["Sandbox", `${s.sandbox.provider} · ${s.sandbox.ready ? "ready" : "not ready"}`],
         ["Timeout", `${s.sandbox.timeout_s} s per execution`],
         ["Memory cap", `${s.sandbox.memory_mb} MB`],
@@ -48,6 +49,10 @@ export function renderSystem(main) {
         ["Workspace", `${s.workspace} · ${s.tables} tables`],
         ["Uploads", s.supported_uploads.join(", ")],
       ])),
+    h("section", { class: "section", id: "agent" },
+      h("div", { class: "section__head" }, h("h2", { class: "eyebrow" }, "Agent model"),
+        h("span", { class: "meta" }, "Who reads questions and writes the proofs")),
+      agent),
     h("section", { class: "section", id: "security" },
       h("div", { class: "section__head" }, h("h2", { class: "eyebrow" }, "Execution security"), h("span", { class: "meta" }, "Applied to every run")),
       h("div", { class: "rows" }, CONTROLS.map(([k, v], i) => reveal(h("div", { class: "row row--compact" },
@@ -60,6 +65,7 @@ export function renderSystem(main) {
       h("div", { class: "section__head" }, h("h2", { class: "eyebrow" }, "Benchmark"), h("span", { class: "meta" }, "Labelled questions with independently computed answers")),
       bench)));
   renderBench(bench, s);
+  renderAgent(agent);
 }
 
 const BENCH_STAGES = ["interpret", "assess", "plan", "generate", "execute", "verify", "reproduce"];

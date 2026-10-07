@@ -565,7 +565,7 @@ def unexplained_terms(question: str, spec: QuerySpec, tables: dict, profiles: di
     for t in {spec.table} | {r.split(".", 1)[0] for r in refs if r}:
         data |= _name_words(t or "")
     for r in filter(None, refs):
-        data |= _name_words(r.split(".", 1)[1])
+        data |= _name_words(r.split(".", 1)[-1])  # a model may omit the table
     if spec.measure:
         data |= _name_words(spec.measure)
         if spec.table in tables and (unit_col := unit_column_for(tables[spec.table], spec.measure)):

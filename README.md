@@ -111,12 +111,36 @@ Progress comes from the backend. Each workflow stage pushes a state snapshot ove
 
 Structured logs (request ID, stage, attempt, status, duration, refusal reason; no data values) are appended to `logs/pcda.jsonl`.
 
+## Agent modes
+
+Three modes decide who reads the question and writes the proof. The verification below is the same in all of them.
+
+| Mode | Reads the question | Writes the proof | Repairs a failed proof | Needs |
+|---|---|---|---|---|
+| **Local agent** | rule-based parser first; the local model reads what the rules cannot | the local model (`qwen2.5-coder:1.5b` via Ollama) | yes: the model gets the verifier's failure messages and rewrites its code, up to `PCDA_MAX_REPAIRS` times | Ollama and the model (about 1 GB), installed from the app |
+| **Claude agent** | Claude and the parser, cross-checked | Claude | yes, the same way | `ANTHROPIC_API_KEY` in `.env` |
+| **Rules only** | the rule-based parser | fixed code templates | no: a template is deterministic, so retrying cannot change it | nothing |
+
+In both agent modes the code template is a safety net: if the model's attempts all fail verification (or the model is unreachable), one last attempt uses the template, and the answer says "code template, after the model's attempts failed". Each analysis records who wrote every attempt and the feedback each repair received.
+
+**Choosing a mode.** On first launch without a model, Home offers **Install local model** or **Use rules only**. The choice is remembered (`.pcda/mode`) and can be changed on the System page under *Agent model*. Installing:
+1. uses Ollama if it is running, or starts it if it is installed;
+2. otherwise installs Ollama with the platform package manager (winget on Windows, Homebrew on macOS). Where neither exists (for example Linux), the app links to https://ollama.com/download instead of running an install script;
+3. downloads the model through Ollama, with progress, and switches to the local agent without a restart.
+
+The launcher starts an installed Ollama that is not running, so the local agent is found. It never installs anything by itself.
+
+**Fine-tuned question reader.** `training/` holds the data generator and Colab notebooks for `pcda-interpreter`, a model fine-tuned to read questions into a `QuerySpec`. Once installed with `scripts/install_local_model.py`, it reads questions for the local agent automatically, and the agent model keeps writing the proofs.
+
 ## Configuration
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `PCDA_LLM_PROVIDER` | `auto` | `anthropic`, `none`, or `auto` (anthropic when `ANTHROPIC_API_KEY` is set) |
-| `PCDA_LLM_MODEL` | `claude-opus-5-5` | Model for interpretation and proof writing |
+| `PCDA_LLM_PROVIDER` | `auto` | `local`, `anthropic`, `none`, or `auto` (Claude when `ANTHROPIC_API_KEY` is set, else the local agent when its model is installed, else rules only). A mode chosen in the app replaces `auto` |
+| `PCDA_LLM_MODEL` | `claude-opus-5-5` | Claude model for interpretation and proof writing |
+| `PCDA_LOCAL_MODEL` | `qwen2.5-coder:1.5b` | Ollama model of the local agent |
+| `PCDA_INTERPRETER_MODEL` | `pcda-interpreter` | Fine-tuned question reader, used when installed |
+| `PCDA_OLLAMA_URL` | `http://127.0.0.1:11434` | Ollama server |
 | `PCDA_SANDBOX` | `subprocess` | `subprocess` or `docker` |
 | `PCDA_DOCKER_IMAGE` | `pcda-sandbox:latest` | Image built from `Dockerfile.sandbox` |
 | `PCDA_TIMEOUT_S` | `30` | Wall-clock limit per execution |
@@ -126,7 +150,7 @@ Structured logs (request ID, stage, attempt, status, duration, refusal reason; n
 
 Values are read from the environment, then from `.env`. Real environment variables win.
 
-**Without a model (`none`)**, questions are interpreted by a deterministic parser. It handles totals, averages, medians, the largest or smallest single value ("oldest age", "highest chol"), counts, distinct counts, rates, growth between two years, top-N and bottom-N, grouping by a column (joined through many-to-one relationships), monthly or yearly grain, date ranges, and a reporting currency. Proof code comes from templates.
+**In rules-only mode (`none`)**, questions are interpreted by a deterministic parser. It handles totals, averages, medians, the largest or smallest single value ("oldest age", "highest chol"), counts, distinct counts, rates, growth between two years, top-N and bottom-N, grouping by a column (joined through many-to-one relationships), monthly or yearly grain, date ranges, and a reporting currency. Proof code comes from templates.
 
 Questions don't need exact phrasing. For example, "region with high revenue usd" reads as total revenue in USD by region, highest one. The parser understands:
 - **Currencies:** ISO codes (`usd`) and unambiguous names (`euros`, `yen`, `dong`), anywhere in the question.
@@ -201,7 +225,7 @@ A result is shown as verified only when all of these checks pass:
 
 Comparison is exact on `Decimal` values. Money is computed with `Decimal` from text, converted per record, and rounded once at the end (half-to-even) to the source's precision or the currency's minor unit.
 
-If verification fails, the workflow repairs and retries up to `PCDA_MAX_REPAIRS` times. Repair means regenerating the proof with the failure details: from the model when one is configured, otherwise from the template. When repairs run out, the system refuses.
+If verification fails in an agent mode, the model rewrites the proof from the failure details, up to `PCDA_MAX_REPAIRS` times, then the code template gets one last attempt. In rules-only mode the template is the only attempt. When attempts run out, the system refuses.
 
 ## Refusals
 
@@ -226,7 +250,7 @@ Exact duplicate rows (identical in every field, including the record ID) are cou
 python -m pytest -q
 ```
 
-The suite (204 tests) covers:
+The suite (211 tests) covers:
 - ingestion: malformed, empty or corrupted files, encodings, hostile column names
 - profiling and trap detection
 - sandbox isolation: environment secrets, subprocess, file reads and writes, network, ctypes, timeout, memory
@@ -276,7 +300,8 @@ Reason: Amounts are in EUR, GBP, USD. Adding them without conversion is meaningl
 
 ## Limitations
 
-- The deterministic parser covers the question grammar described above. Broader phrasing needs the model interpreter.
+- The deterministic parser covers the question grammar described above. Broader phrasing needs an agent mode.
+- The local agent is a small model. On the 17 answerable benchmark questions, `qwen2.5-coder:1.5b` wrote 5 of the verified proofs itself; the template fallback wrote the other 12 (answer accuracy 100%, confident-wrong 0%). With the same prompt `qwen2.5:1.5b` wrote 1; `qwen2.5-coder:3b`, tried with an earlier prompt, wrote 2 at twice the time. A model-written proof is never accepted without passing every check. Fine-tuning (`training/`) is the route to a higher share.
 - Exchange rates must be one fixed rate per currency. Time-varying rate tables are refused, not guessed.
 - Grouping by two dimensions, and grouped rates or growth, are not supported and are refused.
 - The missing-value check on a grouping column considers the whole table, so it may refuse when the missing rows are not actually reached.
