@@ -141,6 +141,12 @@ Every loose reading is listed with the result under **Read as**, so the interpre
 
 **With Claude**, interpretation and proof writing use the model with schema-validated structured output. Model-written code is still policy-checked, sandboxed and verified against the deterministic DuckDB re-computation. If the model is unreachable, the run continues with the deterministic parser and the interpreter field says so.
 
+**With Google Gemini** (free tier available): put `GEMINI_API_KEY=...` in `.env` (git-ignored) and set `PCDA_LLM_PROVIDER=gemini`. Gemini does the same two jobs as Claude, through Google's REST API with no extra dependency.
+- **Privacy:** it receives only table and column names and types, never data values.
+- **Models:** `PCDA_GEMINI_MODEL` is a comma-separated list tried in order (default `gemini-3.5-flash-lite,gemini-3.6-flash,gemini-3.5-flash`). An overloaded, retired or out-of-quota model passes the request to the next one.
+
+**Time limit:** every AI call (Claude or Gemini) is limited to `PCDA_LLM_TIMEOUT_S` (default 3 s), including retries and model switching. A slower answer is abandoned: the question is read by the deterministic parser, or the proof comes from the template. The interpreter field says so.
+
 ## Data format
 
 - **CSV** (UTF-8, with a cp1252 fallback) and **Excel** (`.xlsx`, `.xlsm`; each sheet becomes a table). Other formats can be added in `READERS` in `app/ingestion.py`.
