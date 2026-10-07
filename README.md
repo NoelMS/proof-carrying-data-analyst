@@ -40,15 +40,19 @@ interpret -> assess -> plan -> generate -> execute -> verify -> answer
 
 The model, when one is configured, sees only the question and a metadata summary: schema, profile statistics and sanitized samples, with instruction-like text withheld. It never sees full tables, and all computation runs locally.
 
-## Installation
+## Quick start
 
-Requires Python 3.11+ (developed on 3.13).
+Clone the repository, then double-click **`Proof-Carrying Data Analyst.cmd`** (Windows) or run `./start.sh` (macOS / Linux).
 
-```bash
-python -m venv .venv
-. .venv/bin/activate          # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-```
+The first start sets everything up by itself:
+1. If Python 3.11+ isn't installed, the Windows launcher offers to install it with `winget`.
+2. It creates the project environment `.venv` and installs `requirements.txt`, with a progress window. That's about 150 MB and takes a few minutes.
+3. It adds **Proof-Carrying Data Analyst** shortcuts to the Desktop and the Start menu (Windows). Existing shortcuts are left alone.
+4. It opens the app.
+
+On every later start (shortcut, `.cmd` or `launch.pyw`), the launcher checks the installed packages against `requirements.txt` and installs anything missing or at the wrong version before the app opens. Setup output goes to `logs/setup.log`, and start-up errors to `logs/launcher.log`. To recreate the shortcuts, run `.venv\Scripts\python scripts\create_shortcut.py`. Set `PCDA_NO_SHORTCUT=1` to skip creating them.
+
+To set the environment up by hand instead (Python 3.11+): `python -m venv .venv`, then `.venv\Scripts\pip install -r requirements.txt` (`.venv/bin/pip` on macOS/Linux).
 
 Optional:
 
@@ -60,13 +64,7 @@ python scripts/make_synthetic.py                             # regenerate demons
 
 ## Running
 
-**One click (Windows).** Create the shortcuts once:
-
-```bash
-.venv\Scripts\python scripts\create_shortcut.py
-```
-
-This puts **Proof-Carrying Data Analyst** on the Desktop and in the Start menu. The shortcut starts the server with no console window and opens the app in its own window, with no tabs or address bar, on a free local port. Closing that window stops the server. Start-up errors appear in a dialog and in `logs/launcher.log`. On other systems, run `python launch.pyw`.
+**One click:** use the shortcut, or `Proof-Carrying Data Analyst.cmd` / `start.sh` (see Quick start). The app runs with no console window, in its own window with no tabs or address bar, on a free local port. Closing that window stops the server.
 
 **From a terminal:**
 
@@ -77,7 +75,7 @@ python scripts/cli.py ask "What is the total amount?" --claim 1000 --data path/t
 python scripts/cli.py benchmark                                  # writes benchmark_results.json
 ```
 
-Run these with the Python that has the requirements installed. If you use the project's virtual environment, activate it first (`.venv\Scripts\activate` on Windows), or call `.venv\Scripts\python server.py` directly.
+Run these with the project environment, for example `.venv\Scripts\python server.py` (or `.venv/bin/python server.py`). Starting the app once creates that environment.
 
 ## Web interface
 
@@ -221,7 +219,7 @@ Exact duplicate rows (identical in every field, including the record ID) are cou
 python -m pytest -q
 ```
 
-The suite (133 tests) covers:
+The suite (137 tests) covers:
 - ingestion: malformed, empty or corrupted files, encodings, hostile column names
 - profiling and trap detection
 - sandbox isolation: environment secrets, subprocess, file reads and writes, network, ctypes, timeout, memory
