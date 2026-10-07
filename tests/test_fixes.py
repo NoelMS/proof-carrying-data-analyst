@@ -168,3 +168,10 @@ def test_cases_are_mixed():
     flags = [c["answerable"] for c in CASES]
     longest = max(len(list(g)) for _, g in __import__("itertools").groupby(flags))
     assert longest <= 2 and any(flags) and not all(flags)
+
+
+def test_suggestion_failure_keeps_the_refusal(app, monkeypatch):
+    import app.workflow as wf
+    monkeypatch.setattr(wf, "unblocking_fixes", lambda *a: 1 / 0)
+    f = wf.Analyst(app.catalog, CFG, suggest_fixes=True).run("How many shipments were made in March 2024?").final
+    assert f["status"] == "refused" and f["answerability"] == "AMBIGUOUS" and f["fixes"] == []
