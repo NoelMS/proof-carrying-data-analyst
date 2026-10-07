@@ -37,7 +37,6 @@ function nextStage(s) {
 function phase(s) {
   if (s.final) return s.final.status === "verified" ? "verified" : "refused";
   const next = nextStage(s);
-  if (s.attempts.length && ["generate", "execute", "verify"].includes(next) && failedAttempt(s)) return "repairing";
   if (next === "execute") return "executing";
   if (next === "verify") return "verifying";
   return "analyzing";
@@ -102,7 +101,7 @@ export function renderAnalysis(main, { id }) {
     snap = s;
     renderLeft(s, slots, filled);
     const ph = phase(s);
-    const k = ph === "repairing" ? `${ph}-${s.attempts.length}` : ph;
+    const k = ph;
     const stage = renderStage(s, ph, id);
     if (k !== key) {
       swap(stageHost, stage);
@@ -117,7 +116,7 @@ export function renderAnalysis(main, { id }) {
       renderAfter(after, s, id);
       update({ activity: null });
     } else {
-      update({ activity: { busy: true, label: { analyzing: "Analyzing", executing: "Executing", verifying: "Verifying", repairing: "Repairing" }[ph] } });
+      update({ activity: { busy: true, label: { analyzing: "Analyzing", executing: "Executing", verifying: "Verifying" }[ph] } });
     }
   };
 
@@ -170,7 +169,6 @@ function refreshHistory() {
 function stageAnnouncement(s, ph) {
   if (ph === "verified") return `Verified result. ${s.final.answer}`;
   if (ph === "refused") return `Cannot determine. ${s.final.reason}`;
-  if (ph === "repairing") return "Verification failed. Repairing the analysis.";
   return HEADLINE[nextStage(s)] || "Analyzing";
 }
 
@@ -242,22 +240,10 @@ function renderStage(s, ph, id) {
   if (ph === "verified") return verifiedStage(s, id);
   if (ph === "refused") return refusedStage(s);
   const next = nextStage(s);
-  const at = s.attempts.length;
   const stage = h("section", { class: "stage", "aria-label": "Analysis state" });
-  if (ph === "repairing") {
-    const f = failedAttempt(s);
-    stage.append(
-      h("div", { class: "stage__label" }, h("span", { class: "verdict verdict--failed" }, "Verification failed")),
-      h("p", { class: "lead" }, "The generated proof did not pass verification. No result is shown from it."),
-      comparison(f.verification, s.claimed_value),
-      f.failure_reason && h("p", { class: "meta" }, f.failure_reason),
-      h("div", { class: "stage__label", style: { "margin-top": "var(--space-7)" } }, marker("Repairing analysis", "active"),
-        h("span", { class: "meta" }, `attempt ${at + (next === "generate" ? 1 : 0)}`)));
-  } else {
-    stage.append(
-      h("div", { class: "stage__label" }, marker(ph === "analyzing" ? "Analyzing" : ph === "executing" ? "Executing" : "Verifying", "active")),
-      h("h2", { class: "stage__headline" }, HEADLINE[next] || "Analyzing"));
-  }
+  stage.append(
+    h("div", { class: "stage__label" }, marker(ph === "analyzing" ? "Analyzing" : ph === "executing" ? "Executing" : "Verifying", "active")),
+    h("h2", { class: "stage__headline" }, HEADLINE[next] || "Analyzing"));
   const idx = ORDER.indexOf(next);
   stage.append(
     h("ol", { class: "worklist" }, ORDER.map((st, i) => {
@@ -430,9 +416,7 @@ function renderAfter(host, s, id) {
     ["Duration", `${e.duration_s.toFixed(2)} s`],
     ["Exit code", String(e.exit_code)],
     ["Sandbox", store.status?.sandbox?.provider || "—"],
-    ["Proof written by", { model: "the agent model", template: "code template (rules only)",
-                           "template (fallback)": "code template, after the model's attempts failed" }[at.source] || at.source],
-    ["Attempts", s.attempts.length > 1 ? `${s.attempts.length} (${s.attempts.length - 1} failed verification and were sent back with its feedback)` : "1"],
+    ["Proof written by", at.source === "model" ? "Local model" : "Predefined rules"],
     extra,
   ]));
   setExecFacts(ex);
@@ -505,7 +489,7 @@ function diagnostics(s) {
     s.issues.length > 0 && h("section", {}, h("p", { class: "eyebrow" }, "Data issues in the tables used"),
       table(["table", "column", "issue", "detail"], s.issues.map((i) => [i.table, i.column, label(i.kind), i.detail]))),
     s.attempts.map((at) => h("section", {},
-      h("p", { class: "eyebrow" }, `Attempt ${pad(at.number)} · ${at.source}`),
+      h("p", { class: "eyebrow" }, `Proof · ${at.source === "model" ? "local model" : "predefined rules"}`),
       facts([
         ["Execution", at.execution ? `${at.execution.status}${at.execution.error ? `: ${at.execution.error}` : ""}` : "—"],
         at.execution && ["Duration", `${at.execution.duration_s.toFixed(2)} s`],

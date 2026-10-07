@@ -22,7 +22,7 @@ from .catalog import Catalog
 from .codegen import pandas_proof
 from .config import Config
 from .fixes import unblocking_fixes
-from .llm import ClaudeClient, LLMError
+from .llm import LLMError
 from .local_model import LocalInterpreter, differences, ollama_status
 from .planning import Plan, build_plan
 from .clarify import available_hint, suggest
@@ -103,9 +103,7 @@ class Analyst:
         self.cfg = cfg or Config.from_env()
         self.suggest_fixes = suggest_fixes
         self.sandbox = Sandbox(self.cfg)
-        if self.cfg.llm_provider == "anthropic":
-            self.llm = ClaudeClient(self.cfg.llm_model)
-        elif self.cfg.llm_provider == "local":
+        if self.cfg.llm_provider == "local":
             reader = self.cfg.interpreter_model  # the fine-tuned reader, once it has been installed
             installed = ollama_status(reader, self.cfg.ollama_url)["model_installed"]
             self.llm = LocalInterpreter(self.cfg.local_model, self.cfg.ollama_url, reader=reader if installed else None)
@@ -142,9 +140,7 @@ class Analyst:
             return "done"
         parsed = self._ground(st.question, parse_question(st.question, self.cat.tables, self.cat.profiles,
                                                           self.cat.metrics))
-        if isinstance(self.llm, LocalInterpreter):
-            self._interpret_local(st, parsed)
-        elif self.llm:
+        if self.llm:
             self._interpret_model(st, parsed)
         else:
             st.spec, st.interpreter = parsed, "deterministic parser"
@@ -157,35 +153,10 @@ class Analyst:
         return ground(question, spec, self.cat.tables, self.cat.profiles, self.cat.metrics)
 
     def _interpret_model(self, st: AnalysisState, parsed: QuerySpec):
-        """Claude and the rule-based parser both read the question. Both readings must account for every word;
-        when both do and they disagree, the question is ambiguous and is refused rather than picking one."""
-        name = f"model ({self.cfg.llm_model})"
-        try:
-            model_spec = self._ground(st.question, self.llm.interpret(st.question, catalog_summary(
-                self.cat.tables, self.cat.profiles, self.cat.relationships, self.cat.metrics)))
-        except LLMError as e:
-            st.spec, st.interpreter = parsed, f"deterministic parser (model unavailable: {e})"
-            return
-        if not blocked(parsed) and not blocked(model_spec):
-            if diff := differences(parsed, model_spec):
-                parsed.ambiguities.append("The question can be read in more than one way: the model and the "
-                                          f"rule-based parser disagree on {', '.join(diff)}. Rephrase it more precisely.")
-                st.spec, st.interpreter = parsed, f"{name} + deterministic parser (disagree)"
-            else:
-                model_spec.notes.append("the rule-based parser reads it the same way")
-                st.spec, st.interpreter = model_spec, name
-        elif blocked(model_spec) and not blocked(parsed):
-            parsed.notes.append("the model's reading was rejected: " + "; ".join(
-                model_spec.unresolved + model_spec.ambiguities + model_spec.unsupported))
-            st.spec, st.interpreter = parsed, "deterministic parser"
-        else:
-            st.spec, st.interpreter = model_spec, name
-
-    def _interpret_local(self, st: AnalysisState, parsed: QuerySpec):
         """Parser first; the local model reads what the parser cannot. A small model can misread a question
         the parser reads correctly, so the parser's complete reading always wins and a model that disagrees
         is only reported. Whatever is chosen still goes through every answerability check."""
-        name = f"local model ({self.llm.reader})"
+        name = f"local model ({getattr(self.llm, 'reader', 'model')})"
         try:
             model_spec = self._ground(st.question, self.llm.interpret(st.question, catalog_summary(
                 self.cat.tables, self.cat.profiles, self.cat.relationships, self.cat.metrics)))

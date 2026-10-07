@@ -17,7 +17,9 @@ export function renderHome(main) {
   const claim = h("input", { id: "claim", name: "claim", type: "text", inputmode: "decimal", autocomplete: "off", placeholder: "optional" });
   const error = h("p", { class: "command__error", id: "question-error", "aria-live": "polite" });
   const submit = h("button", { class: "btn btn--primary", type: "submit" }, "Analyze question ", arrow());
+  const answeredBy = h("div", { class: "command__mode" });
   const form = h("form", { class: "command", novalidate: true },
+    answeredBy,
     h("label", { class: "command__label eyebrow", for: "question" }, "Ask an analytical question"),
     input, error,
     h("div", { class: "command__foot" },
@@ -60,7 +62,6 @@ export function renderHome(main) {
 
   const dataCol = h("section", { "aria-labelledby": "available-data" });
   const exampleCol = h("section", { "aria-labelledby": "examples" });
-  const agentChoice = h("div");
 
   main.replaceChildren(h("div", { class: "view" },
     h("header", { class: "view__head" },
@@ -68,9 +69,8 @@ export function renderHome(main) {
       h("h1", { class: "title", tabindex: "-1" }, "Ask a question. ",
         h("span", { class: "title--muted" }, "We find the evidence, execute the calculation, and verify the result."))),
     form,
-    agentChoice,
     h("div", { class: "two-col section" }, dataCol, exampleCol)));
-  renderAgent(agentChoice, { compact: true });
+  renderAgent(answeredBy);
 
   renderData(dataCol, store.datasets);
   api.examples().then((ex) => renderExamples(exampleCol, ex, input)).catch(() => {});

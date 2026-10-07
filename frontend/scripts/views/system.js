@@ -50,7 +50,7 @@ export function renderSystem(main) {
         ["Uploads", s.supported_uploads.join(", ")],
       ])),
     h("section", { class: "section", id: "agent" },
-      h("div", { class: "section__head" }, h("h2", { class: "eyebrow" }, "Agent model"),
+      h("div", { class: "section__head" }, h("h2", { class: "eyebrow" }, "How questions are answered"),
         h("span", { class: "meta" }, "Who reads questions and writes the proofs")),
       agent),
     h("section", { class: "section", id: "security" },
@@ -65,7 +65,7 @@ export function renderSystem(main) {
       h("div", { class: "section__head" }, h("h2", { class: "eyebrow" }, "Benchmark"), h("span", { class: "meta" }, "Labelled questions with independently computed answers")),
       bench)));
   renderBench(bench, s);
-  renderAgent(agent);
+  renderAgent(agent, { details: true });
 }
 
 const BENCH_STAGES = ["interpret", "assess", "plan", "generate", "execute", "verify", "reproduce"];

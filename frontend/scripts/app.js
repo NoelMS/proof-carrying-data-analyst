@@ -92,7 +92,7 @@ function renderSidebar(s) {
     group("System", s.status
       ? h("ul", { class: "sidebar__list" },
           item("#/system", "Sandbox", s.status.sandbox.ready ? "ready" : "error"),
-          item("#/system", "Agent", { local: "local model", anthropic: "Claude", none: "rules only" }[s.status.mode] || "—"),
+          item("#/system", "Agent", { local: "local model", none: "predefined rules" }[s.status.mode] || "—"),
           item("#/quality", "Data issues", s.datasets ? String(s.datasets.issues.length) : "—"))
       : h("p", { class: "meta" }, "—")),
   );

@@ -1,14 +1,16 @@
-// Agent model: who reads questions and writes the proofs. Install the local model, or choose rules only.
+// Who answers: the local model or the predefined rules. Shown on the question form and the System page.
 import { api } from "../api.js";
 import { toast } from "../components.js";
-import { arrow, h } from "../dom.js";
+import { h } from "../dom.js";
 import { update } from "../state.js";
 
-const MODES = [["local", "Local agent"], ["anthropic", "Claude agent"], ["none", "Rules only"]];
-export const MODE_TEXT = {
-  local: "A model on this PC reads each question, writes the proof code, and repairs it from the verifier's feedback.",
-  anthropic: "Claude reads each question, writes the proof code, and repairs it from the verifier's feedback.",
-  none: "No model: questions are read by rules and proofs come from fixed code templates, so nothing is repaired.",
+const OPTIONS = {
+  local: { title: "Local model", sub: "AI on this PC",
+    text: "A small AI model on this PC reads your question and writes the proof code, then fixes its own code until it " +
+          "passes verification. Understands freer wording; takes a few seconds longer." },
+  none: { title: "Predefined rules", sub: "Instant, fixed wording",
+    text: "Built-in rules read your question and fixed code templates compute the answer. Instant and fully " +
+          "predictable, but it only understands the wording the rules cover." },
 };
 let timer = null;
 
@@ -16,74 +18,65 @@ async function refreshStatus() {
   try { update({ status: await api.status() }); } catch { /* the sidebar keeps its last status */ }
 }
 
-async function install(m, rerender) {
-  const what = m.ollama_installed ? m.agent_model : `Ollama (the program that runs models) and ${m.agent_model}`;
-  if (!confirm(`Download and install ${what}? About 1 GB; it runs only on this PC.`)) return;
-  try { await api.installModel(); } catch (e) { toast(e.message, "error"); }
-  rerender();
-}
-
-async function choose(mode, rerender) {
+async function choose(m, mode, rerender) {
+  if (mode === "local" && !m.model_installed) {
+    const what = m.ollama_installed ? m.agent_model : `Ollama (the program that runs it) and ${m.agent_model}`;
+    if (!confirm(`The local model is not installed yet. Download and install ${what}? About 1 GB; it runs only on this PC.`)) return;
+    try { await api.installModel(); } catch (e) { toast(e.message, "error"); }
+    return rerender();
+  }
   try {
     await api.setMode(mode);
-    toast(`Now using: ${MODES.find(([v]) => v === mode)[1]}`);
+    toast(`Questions are now answered by: ${OPTIONS[mode].title}`);
   } catch (e) { toast(e.message, "error"); }
   await refreshStatus();
   rerender();
 }
 
-function progress(st) {
-  return h("div", { role: "status" },
-    h("div", { class: "progress" }, h("div", { class: "progress__bar", style: { "--p": String((st.percent ?? 0) / 100) } })),
-    h("p", { class: "meta" }, st.message, st.percent != null ? ` · ${st.percent}%` : ""));
-}
-
-/* `compact`: the one-time choice on Home, shown only while no model is in use and no mode was chosen. */
-export async function renderAgent(host, { compact = false } = {}) {
+/* Fills `host` with the switch; `details` adds the model names (System page). */
+export async function renderAgent(host, { details = false } = {}) {
   clearTimeout(timer);
   let m;
   try { m = await api.model(); } catch { return; }
   if (!host.isConnected) return;
-  const rerender = () => renderAgent(host, { compact });
+  const rerender = () => renderAgent(host, { details });
   const st = m.install || {};
-  if (st.running) timer = setTimeout(rerender, 1000);
-  else if (st.done && m.mode === "local" && host.dataset.installing) { delete host.dataset.installing; refreshStatus(); toast("Local agent installed and in use"); }
-  if (st.running) host.dataset.installing = "1";
-
-  if (compact && (m.mode !== "none" || m.saved) && !st.running) { host.replaceChildren(); return; }
-  const installBtn = !m.model_installed && h("button", { class: "btn btn--primary", type: "button", disabled: st.running || null,
-    onclick: () => install(m, rerender) }, `Install local model (about 1 GB) `, arrow());
-  const error = st.error && h("p", { class: "notice-inline", role: "alert" }, st.error,
-    !m.ollama_installed && h("span", {}, " ", h("a", { href: m.download_url, target: "_blank", rel: "noopener" }, "Download Ollama")));
-
-  if (compact) {
-    host.replaceChildren(h("section", { class: "section agent-choice" },
-      h("p", { class: "eyebrow" }, "Choose how questions are answered"),
-      h("p", { class: "meta", style: { "max-width": "70ch" } },
-        `No model is in use yet. ${MODE_TEXT.local} Or keep rules only: fast and fully deterministic, but it understands only the wording its rules cover.`),
-      h("div", { class: "actions" },
-        installBtn,
-        m.model_installed && h("button", { class: "btn btn--primary", type: "button", onclick: () => choose("local", rerender) }, "Use the local agent ", arrow()),
-        h("button", { class: "btn btn--secondary", type: "button", disabled: st.running || null, onclick: () => choose("none", rerender) }, "Use rules only")),
-      st.running && progress(st), error));
-    return;
+  if (st.running) { host.dataset.installing = "1"; timer = setTimeout(rerender, 1000); }
+  else if (host.dataset.installing) {
+    delete host.dataset.installing;
+    if (st.done) { toast("Local model installed and in use"); refreshStatus(); }
   }
 
-  const state = m.model_installed ? (m.ollama_running ? "installed and running" : "installed, Ollama not running")
-    : m.ollama_installed ? "not downloaded yet" : "not installed (Ollama is missing)";
-  host.replaceChildren(h("div", {},
-    h("div", { class: "segmented", role: "group", "aria-label": "Agent mode" }, MODES.map(([value, text]) => {
-      const off = (value === "local" && !m.model_installed) || (value === "anthropic" && !m.claude_available);
-      return h("button", { type: "button", "aria-pressed": String(m.mode === value), disabled: off || null,
-        title: off ? (value === "local" ? "Install the local model first" : "Set ANTHROPIC_API_KEY in .env") : null,
-        onclick: () => m.mode !== value && choose(value, rerender) }, text);
-    })),
-    h("p", { class: "meta", style: { margin: "var(--space-3) 0", "max-width": "70ch" } }, MODE_TEXT[m.mode]),
-    h("dl", { class: "facts" },
-      h("dt", {}, "Local agent model"), h("dd", {}, `${m.agent_model} · ${state}`),
+  const desc = h("p", { class: "mode-switch__desc", id: `mode-desc-${details ? "sys" : "ask"}`, "aria-live": "polite" });
+  const show = (mode) => {
+    const o = OPTIONS[mode];
+    desc.replaceChildren(h("strong", {}, o.title), " · ", o.text,
+      mode === "local" && !m.model_installed ? " Not installed yet: select it to install (about 1 GB)." : "");
+  };
+  show(m.mode);
+  const buttons = Object.entries(OPTIONS).map(([mode, o]) => h("button", {
+    type: "button", class: "mode-switch__option", "aria-pressed": String(m.mode === mode), "aria-describedby": desc.id,
+    title: o.text, disabled: st.running || null,
+    onmouseenter: () => show(mode), onfocus: () => show(mode),
+    onmouseleave: () => show(m.mode), onblur: () => show(m.mode),
+    onclick: () => m.mode !== mode && choose(m, mode, rerender),
+  }, h("span", { class: "mode-switch__title" }, o.title),
+     h("span", { class: "mode-switch__sub" }, mode === "local" && !m.model_installed ? "Not installed · select to install" : o.sub)));
+
+  host.replaceChildren(h("div", { class: "mode-switch" },
+    h("p", { class: "eyebrow mode-switch__label" }, "Answered by"),
+    h("div", { class: "mode-switch__options", role: "group", "aria-label": "Answered by" }, buttons),
+    desc,
+    st.running && h("div", { role: "status" },
+      h("div", { class: "progress" }, h("div", { class: "progress__bar", style: { "--p": String((st.percent ?? 0) / 100) } })),
+      h("p", { class: "meta" }, st.message, st.percent != null ? ` · ${st.percent}%` : "")),
+    st.error && h("p", { class: "notice-inline", role: "alert" }, st.error,
+      !m.ollama_installed && h("span", {}, " ", h("a", { href: m.download_url, target: "_blank", rel: "noopener" }, "Download Ollama"))),
+    details && h("dl", { class: "facts", style: { "margin-top": "var(--space-4)" } },
+      h("dt", {}, "Local model"), h("dd", {}, `${m.agent_model} · ${m.model_installed
+        ? (m.ollama_running ? "installed and running" : "installed, Ollama not running")
+        : m.ollama_installed ? "not downloaded yet" : "not installed (Ollama is missing)"}`),
       h("dt", {}, "Fine-tuned question reader"), h("dd", {}, m.interpreter_installed
-        ? `${m.interpreter_model} · installed, reads questions for the local agent`
-        : `${m.interpreter_model} · not installed (optional; the agent model reads questions meanwhile)`)),
-    installBtn && h("div", { class: "actions", style: { "margin-top": "var(--space-4)" } }, installBtn),
-    st.running && progress(st), error));
+        ? `${m.interpreter_model} · installed, reads questions for the local model`
+        : `${m.interpreter_model} · not installed (optional)`))));
 }

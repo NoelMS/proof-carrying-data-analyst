@@ -30,7 +30,7 @@ interpret -> assess -> plan -> generate -> execute -> verify -> answer
 | Ingestion | `app/ingestion.py` | Loads CSV / XLSX (every sheet) into all-string tables under `<workspace>/data/<table>.csv`. Reads `metrics.json` as business definitions. |
 | Profiling | `app/profiling.py` | Infers types, missingness, unique counts, ranges, decimal places and date formats (ISO / d/m / m/d / ambiguous / mixed). Also finds likely keys, duplicate and conflicting keys, and foreign-key relationships. |
 | Trap detection | `app/traps.py` | Flags duplicate rows, conflicting records, mixed currencies, currency symbols, mixed units, ambiguous or inconsistent dates, missing timezones, negative quantities, orphan keys, child-before-parent dates, pre-aggregated tables, and instruction-like text in cells. |
-| Interpretation | `app/question.py`, `app/llm.py` | Turns the question into a validated `QuerySpec`, either with the deterministic parser or with Claude (structured output). |
+| Interpretation | `app/question.py`, `app/llm.py` | Turns the question into a validated `QuerySpec`, with the deterministic parser, and with the local model for wording the parser cannot read. |
 | Answerability | `app/answerability.py` | Resolves joins (many-to-one only), currency conversion, units, precision and date coverage, or blocks with `AMBIGUOUS`, `INSUFFICIENT_DATA`, `CONTRADICTORY_DATA` or `UNSUPPORTED_OPERATION`. |
 | Planning | `app/planning.py` | Builds an explicit, numbered plan and an output contract. |
 | Code generation | `app/codegen.py` | Generates a pandas + `Decimal` proof script from the plan, and a separate DuckDB SQL check. |
@@ -111,34 +111,32 @@ Progress comes from the backend. Each workflow stage pushes a state snapshot ove
 
 Structured logs (request ID, stage, attempt, status, duration, refusal reason; no data values) are appended to `logs/pcda.jsonl`.
 
-## Agent modes
+## Who answers: local model or predefined rules
 
-Three modes decide who reads the question and writes the proof. The verification below is the same in all of them.
+Two modes decide who reads the question and writes the proof. The verification below is the same in both.
 
 | Mode | Reads the question | Writes the proof | Repairs a failed proof | Needs |
 |---|---|---|---|---|
-| **Local agent** | rule-based parser first; the local model reads what the rules cannot | the local model (`qwen2.5-coder:1.5b` via Ollama) | yes: the model gets the verifier's failure messages and rewrites its code, up to `PCDA_MAX_REPAIRS` times | Ollama and the model (about 1 GB), installed from the app |
-| **Claude agent** | Claude and the parser, cross-checked | Claude | yes, the same way | `ANTHROPIC_API_KEY` in `.env` |
-| **Rules only** | the rule-based parser | fixed code templates | no: a template is deterministic, so retrying cannot change it | nothing |
+| **Local model** | rule-based parser first; the local model reads what the rules cannot | the local model (`qwen2.5-coder:1.5b` via Ollama) | yes: the model gets the verifier's failure messages and rewrites its code, up to `PCDA_MAX_REPAIRS` times | Ollama and the model (about 1 GB), installed from the app |
+| **Predefined rules** | the rule-based parser | fixed code templates | no: a template is deterministic, so retrying cannot change it | nothing |
 
-In both agent modes the code template is a safety net: if the model's attempts all fail verification (or the model is unreachable), one last attempt uses the template, and the answer says "code template, after the model's attempts failed". Each analysis records who wrote every attempt and the feedback each repair received.
+With the local model, the code template is a safety net: if the model's attempts all fail verification (or the model is unreachable), one last attempt uses the template. The answer shows who wrote the proof that passed (local model or predefined rules). Drafts that failed verification are not shown; they are kept in `logs/pcda.jsonl`. A refusal still shows the failed check it rests on.
 
-**Choosing a mode.** On first launch without a model, Home offers **Install local model** or **Use rules only**. The choice is remembered (`.pcda/mode`) and can be changed on the System page under *Agent model*. Installing:
+**Choosing a mode.** The question form starts with an **Answered by** switch: *Local model* or *Predefined rules*. Hovering, focusing or selecting an option describes it. The choice is remembered (`.pcda/mode`) and is also on the System page. Selecting *Local model* before it is installed offers to install it:
 1. uses Ollama if it is running, or starts it if it is installed;
 2. otherwise installs Ollama with the platform package manager (winget on Windows, Homebrew on macOS). Where neither exists (for example Linux), the app links to https://ollama.com/download instead of running an install script;
-3. downloads the model through Ollama, with progress, and switches to the local agent without a restart.
+3. downloads the model through Ollama, with progress, and switches to the local model without a restart.
 
-The launcher starts an installed Ollama that is not running, so the local agent is found. It never installs anything by itself.
+The launcher starts an installed Ollama that is not running, so the local model is found. It never installs anything by itself.
 
-**Fine-tuned question reader.** `training/` holds the data generator and Colab notebooks for `pcda-interpreter`, a model fine-tuned to read questions into a `QuerySpec`. Once installed with `scripts/install_local_model.py`, it reads questions for the local agent automatically, and the agent model keeps writing the proofs.
+**Fine-tuned question reader.** `training/` holds the data generator and Colab notebooks for `pcda-interpreter`, a model fine-tuned to read questions into a `QuerySpec`. Once installed with `scripts/install_local_model.py`, it reads questions for the local model automatically, and the agent model keeps writing the proofs.
 
 ## Configuration
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `PCDA_LLM_PROVIDER` | `auto` | `local`, `anthropic`, `none`, or `auto` (Claude when `ANTHROPIC_API_KEY` is set, else the local agent when its model is installed, else rules only). A mode chosen in the app replaces `auto` |
-| `PCDA_LLM_MODEL` | `claude-opus-5-5` | Claude model for interpretation and proof writing |
-| `PCDA_LOCAL_MODEL` | `qwen2.5-coder:1.5b` | Ollama model of the local agent |
+| `PCDA_LLM_PROVIDER` | `auto` | `local` (local model), `none` (predefined rules), or `auto` (the local model when installed, else predefined rules). A mode chosen in the app replaces `auto` |
+| `PCDA_LOCAL_MODEL` | `qwen2.5-coder:1.5b` | Ollama model of the local model |
 | `PCDA_INTERPRETER_MODEL` | `pcda-interpreter` | Fine-tuned question reader, used when installed |
 | `PCDA_OLLAMA_URL` | `http://127.0.0.1:11434` | Ollama server |
 | `PCDA_SANDBOX` | `subprocess` | `subprocess` or `docker` |
@@ -150,7 +148,7 @@ The launcher starts an installed Ollama that is not running, so the local agent 
 
 Values are read from the environment, then from `.env`. Real environment variables win.
 
-**In rules-only mode (`none`)**, questions are interpreted by a deterministic parser. It handles totals, averages, medians, the largest or smallest single value ("oldest age", "highest chol"), counts, distinct counts, rates, growth between two years, top-N and bottom-N, grouping by a column (joined through many-to-one relationships), monthly or yearly grain, date ranges, and a reporting currency. Proof code comes from templates.
+**With predefined rules (`none`)**, questions are interpreted by a deterministic parser. It handles totals, averages, medians, the largest or smallest single value ("oldest age", "highest chol"), counts, distinct counts, rates, growth between two years, top-N and bottom-N, grouping by a column (joined through many-to-one relationships), monthly or yearly grain, date ranges, and a reporting currency. Proof code comes from templates.
 
 Questions don't need exact phrasing. For example, "region with high revenue usd" reads as total revenue in USD by region, highest one. The parser understands:
 - **Currencies:** ISO codes (`usd`) and unambiguous names (`euros`, `yen`, `dong`), anywhere in the question.
@@ -170,7 +168,7 @@ Every loose reading is listed with the result under **Read as**, so the interpre
 
 **Vague questions get "Did you mean".** A refusal caused by wording rather than by the data comes with up to four rewritten questions (`app/clarify.py`). Every rewrite has already passed interpretation, the every-word check and every answerability check, so choosing one runs a normal verified analysis; nothing is assumed until the user picks. Examples: "total revenue" → *in USD* or *by order currency* (no conversion); "revenue in dollars" → *in USD*; "total payment amount" → *completed / failed / pending payments* or *by status*; "web or partner" → each channel; "higher in 2024 than 2023" → *growth from 2023 to 2024*; "customer 001" → *customer C001*; "excluding refunds" (no refund data) → the question without it, labelled as such. A rewrite is never offered when it would change the meaning: dropping a negation ("not from web"), the subject, or most of the question, or rewriting a "why" or a forecast. Questions about something the data does not hold get a hint listing the metrics, numeric columns and entities it does hold. The refusal status and reason are unchanged, so benchmark scoring is unaffected.
 
-**With Claude**, interpretation and proof writing use the model with schema-validated structured output. The deterministic parser also reads every question, and both readings go through the same every-word check. If both are complete and disagree, the question is refused as ambiguous rather than trusting either; a model reading that leaves a word unused or maps a word to a merely similar column ("profit" to `amount`) is rejected. Model-written code is still policy-checked, sandboxed and verified against the deterministic DuckDB re-computation. If the model is unreachable, the run continues with the deterministic parser and the interpreter field says so.
+**With the local model**, the parser still reads every question first, and its complete reading always wins: a small model can misread wording the parser reads correctly, so a disagreement is only noted. The model's reading is used only when the parser cannot read the question, and only if it accounts for every word and refers to columns that exist. Model-written code is policy-checked, sandboxed and verified against the DuckDB re-computation. If the model is unreachable, the run continues with the parser and the template, and the interpreter field says so.
 
 ## Data format
 
@@ -225,7 +223,7 @@ A result is shown as verified only when all of these checks pass:
 
 Comparison is exact on `Decimal` values. Money is computed with `Decimal` from text, converted per record, and rounded once at the end (half-to-even) to the source's precision or the currency's minor unit.
 
-If verification fails in an agent mode, the model rewrites the proof from the failure details, up to `PCDA_MAX_REPAIRS` times, then the code template gets one last attempt. In rules-only mode the template is the only attempt. When attempts run out, the system refuses.
+If verification fails with the local model, the model rewrites the proof from the failure details and its failed script, up to `PCDA_MAX_REPAIRS` times, then the code template gets one last attempt. With predefined rules the template is the only attempt. When attempts run out, the system refuses.
 
 ## Refusals
 
@@ -250,7 +248,7 @@ Exact duplicate rows (identical in every field, including the record ID) are cou
 python -m pytest -q
 ```
 
-The suite (211 tests) covers:
+The suite (212 tests) covers:
 - ingestion: malformed, empty or corrupted files, encodings, hostile column names
 - profiling and trap detection
 - sandbox isolation: environment secrets, subprocess, file reads and writes, network, ctypes, timeout, memory
@@ -300,8 +298,8 @@ Reason: Amounts are in EUR, GBP, USD. Adding them without conversion is meaningl
 
 ## Limitations
 
-- The deterministic parser covers the question grammar described above. Broader phrasing needs an agent mode.
-- The local agent is a small model. On the 17 answerable benchmark questions, `qwen2.5-coder:1.5b` wrote 5 of the verified proofs itself; the template fallback wrote the other 12 (answer accuracy 100%, confident-wrong 0%). With the same prompt `qwen2.5:1.5b` wrote 1; `qwen2.5-coder:3b`, tried with an earlier prompt, wrote 2 at twice the time. A model-written proof is never accepted without passing every check. Fine-tuning (`training/`) is the route to a higher share.
+- The deterministic parser covers the question grammar described above. Broader phrasing needs the local model.
+- The local model is small. On the 17 answerable benchmark questions, `qwen2.5-coder:1.5b` wrote 5 of the verified proofs itself; the template fallback wrote the other 12 (answer accuracy 100%, confident-wrong 0%). With the same prompt `qwen2.5:1.5b` wrote 1; `qwen2.5-coder:3b`, tried with an earlier prompt, wrote 2 at twice the time. A model-written proof is never accepted without passing every check. Fine-tuning (`training/`) is the route to a higher share.
 - Exchange rates must be one fixed rate per currency. Time-varying rate tables are refused, not guessed.
 - Grouping by two dimensions, and grouped rates or growth, are not supported and are refused.
 - The missing-value check on a grouping column considers the whole table, so it may refuse when the missing rows are not actually reached.

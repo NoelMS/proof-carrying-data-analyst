@@ -9,7 +9,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import pytest
 
 from app import local_setup
-from app.api import App
+from app.api import App, serialize
 from app.workflow import Analyst
 from tests.conftest import CFG
 
@@ -71,6 +71,9 @@ def test_model_repairs_its_proof_from_verifier_feedback(catalog, ollama, good_co
     code_calls = [c for c in ollama.calls if c[0] == "code"]
     assert "<feedback>" not in code_calls[0][2] and "NameError" in code_calls[1][2]  # the repair saw why it failed
     assert "undefined_name" in code_calls[1][2]  # and the script it is repairing
+    shown = serialize(st, catalog)  # the user sees the proof that passed, not the draft before it
+    assert [a["number"] for a in shown["attempts"]] == [2]
+    assert all(e.get("attempt") != 1 for e in shown["stages"])
 
 
 def test_template_is_the_labelled_safety_net(catalog, ollama):
@@ -78,6 +81,12 @@ def test_template_is_the_labelled_safety_net(catalog, ollama):
     st = Analyst(catalog, local(ollama.url)).run(Q)
     assert [a.source for a in st.attempts] == ["model"] * 3 + ["template (fallback)"]
     assert st.verified and st.final["numeric_value"] == "815497.70"
+
+
+def test_a_refusal_keeps_the_evidence_it_rests_on(catalog):
+    st = Analyst(catalog, CFG).run(Q, claimed_value="1")
+    assert st.final["status"] == "refused"
+    assert [a["number"] for a in serialize(st, catalog)["attempts"]] == [1]
 
 
 def test_unreachable_model_falls_back_to_rules(catalog):

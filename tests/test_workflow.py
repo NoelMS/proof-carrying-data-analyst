@@ -122,7 +122,7 @@ def test_supported_conversion_and_join(make_catalog):
 
 
 class FakeModel:
-    """Stands in for the Claude client: returns fixed specs / code."""
+    """Stands in for the local model client: returns fixed specs / code."""
     def __init__(self, spec=None, codes=(), fail=False):
         self.spec, self.codes, self.fail = spec, list(codes), fail
 
@@ -166,16 +166,16 @@ def test_model_reading_with_the_wrong_value_is_rejected(catalog):
                                 filters=[{"column": "orders.channel", "op": "==", "value": "partner"}]))
     st = a.run("What is the revenue in USD from the web channel?")
     assert st.verified and st.final["numeric_value"] == "292117.70"
-    assert any("model's reading was rejected" in n for n in st.spec.notes)
+    assert any("the parser's reading is used" in n for n in st.spec.notes)
 
 
-def test_model_and_parser_disagreeing_is_ambiguous(catalog):
+def test_parser_reading_wins_when_the_model_disagrees(catalog):
     a = Analyst(catalog, CFG)  # both readings use every word, but count by different dates
     a.llm = FakeModel(QuerySpec(metric_term="orders", table="orders", measure="order_id", aggregation="count_distinct",
                                 date_column="payments.payment_date", date_from="2024-01-01", date_to="2024-12-31"))
     st = a.run("How many orders were placed in 2024?")
-    assert st.final["status"] == "refused" and st.final["answerability"] == "AMBIGUOUS"
-    assert "date_column" in st.final["reason"]
+    assert st.verified and st.spec.date_column == "orders.order_date"
+    assert any("date_column" in n and "parser's reading is used" in n for n in st.spec.notes)
 
 
 def test_model_synonym_guess_is_refused(catalog):
@@ -196,7 +196,7 @@ def test_model_outage_falls_back_visibly(catalog):
     a = Analyst(catalog, CFG)
     a.llm = FakeModel(fail=True)
     st = a.run("How many customers are there?")
-    assert st.verified and "model unavailable" in st.interpreter
+    assert st.verified and "unavailable" in st.interpreter
 
 
 def test_stage_log_is_structured(analyst):

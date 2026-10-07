@@ -72,6 +72,11 @@ SAMPLE_ROWS = 25
 def serialize(st: AnalysisState, cat: Catalog) -> dict:
     a, p = st.answerability, st.plan
     rows = {t: cat.profiles[t].rows for t in st.datasets if t in cat.profiles}
+    # Drafts that failed verification are internal to the agent: the user sees the proof that passed (or the
+    # refusal), not the attempts before it. They stay in logs/pcda.jsonl.
+    failed = {at.number for at in st.attempts if at.failure_reason}
+    if st.final and st.final["status"] == "refused" and st.attempts:  # a refusal shows the evidence it rests on
+        failed.discard(st.attempts[-1].number)
     out = {
         "id": st.request_id, "question": st.question, "claimed_value": st.claimed_value,
         "interpreter": st.interpreter, "spec": st.spec.model_dump(exclude_defaults=True) if st.spec else None,
@@ -84,8 +89,8 @@ def serialize(st: AnalysisState, cat: Catalog) -> dict:
             "number": at.number, "source": at.source, "code": at.code, "failure_reason": at.failure_reason,
             "execution": at.execution.__dict__ if at.execution else None,
             "verification": at.verification.record() if at.verification else None,
-        } for at in st.attempts],
-        "stages": st.stages,
+        } for at in st.attempts if at.number not in failed],
+        "stages": [e for e in st.stages if e.get("attempt") not in failed],
         "final": st.final or None,
     }
     if st.verified:
@@ -107,7 +112,7 @@ class Run:
     cond: threading.Condition = field(default_factory=threading.Condition)
 
 
-MODES = {"local": "Local agent", "anthropic": "Claude agent", "none": "Rules only"}
+MODES = {"local": "Local model", "none": "Predefined rules"}
 
 
 class App:
@@ -469,8 +474,6 @@ class App:
             self.cfg = replace(self.cfg, llm_provider=mode)
 
     def _unavailable(self, mode: str) -> str | None:
-        if mode == "anthropic" and not os.environ.get("ANTHROPIC_API_KEY"):
-            return "Claude needs ANTHROPIC_API_KEY in .env."
         if mode == "local" and not ollama_status(self.cfg.local_model, self.cfg.ollama_url)["model_installed"]:
             return f"The local model ({self.cfg.local_model}) is not installed yet: install it first."
         return None
@@ -490,7 +493,7 @@ class App:
                 "interpreter_model": cfg.interpreter_model,
                 "interpreter_installed": any(n.split(":")[0] == cfg.interpreter_model for n in status["models"]),
                 "ollama_running": status["reachable"], "ollama_installed": bool(status["reachable"] or ollama_exe()),
-                "model_installed": status["model_installed"], "claude_available": bool(os.environ.get("ANTHROPIC_API_KEY")),
+                "model_installed": status["model_installed"],
                 "download_url": DOWNLOAD_URL, "install": self.install_state}
 
     def start_install(self):
@@ -627,8 +630,7 @@ class Handler(SimpleHTTPRequestHandler):
         app, cat, cfg = self.app, self.app.catalog, self.app.cfg
         return {
             "product": "Proof-Carrying Data Analyst",
-            "interpreter": MODES[cfg.llm_provider] + {"anthropic": f" ({cfg.llm_model})",
-                                                     "local": f" ({cfg.local_model})"}.get(cfg.llm_provider, ""),
+            "interpreter": MODES[cfg.llm_provider] + (f" ({cfg.local_model})" if cfg.llm_provider == "local" else ""),
             "mode": cfg.llm_provider, "mode_saved": app.saved_mode(),
             "sandbox": {"provider": cfg.sandbox, "timeout_s": cfg.timeout_s, "memory_mb": cfg.memory_mb, **app.sandbox_probe},
             "max_repairs": cfg.max_repairs,

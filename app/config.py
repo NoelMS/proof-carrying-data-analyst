@@ -10,8 +10,7 @@ def _env(name: str, default: str) -> str:
 
 @dataclass(frozen=True)
 class Config:
-    llm_provider: str = "none"  # "anthropic" (Claude agent), "local" (Ollama agent) or "none" (rules only)
-    llm_model: str = "claude-opus-5-5"
+    llm_provider: str = "none"  # "local" (agent model on this PC) or "none" (predefined rules)
     local_model: str = "qwen2.5-coder:1.5b"  # local agent: writes and repairs the proof
     interpreter_model: str = "pcda-interpreter"  # fine-tuned question reader; used instead when installed
     ollama_url: str = "http://127.0.0.1:11434"
@@ -33,17 +32,13 @@ class Config:
         local_model = _env("PCDA_LOCAL_MODEL", cls.local_model)
         interpreter_model = _env("PCDA_INTERPRETER_MODEL", cls.interpreter_model)
         ollama_url = _env("PCDA_OLLAMA_URL", cls.ollama_url)
-        if provider == "auto":  # API key -> Claude; else an installed local model -> local; else the parser
-            if os.environ.get("ANTHROPIC_API_KEY"):
-                provider = "anthropic"
-            else:
-                from .local_model import ollama_status
-                provider = "local" if ollama_status(local_model, ollama_url)["model_installed"] else "none"
-        elif provider not in ("anthropic", "local", "none"):
+        if provider == "auto":  # the local agent when its model is installed, otherwise the rules
+            from .local_model import ollama_status
+            provider = "local" if ollama_status(local_model, ollama_url)["model_installed"] else "none"
+        elif provider not in ("local", "none"):
             provider = "none"
         return cls(
             llm_provider=provider,
-            llm_model=_env("PCDA_LLM_MODEL", cls.llm_model),
             local_model=local_model,
             interpreter_model=interpreter_model,
             ollama_url=ollama_url,
