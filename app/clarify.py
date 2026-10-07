@@ -11,7 +11,7 @@ import re
 from .answerability import Assessment, assess
 from .catalog import Catalog
 from .local_model import reading
-from .question import (AMBIGUOUS_CURRENCY_WORDS, GRAMMAR, QuerySpec, _is_measure, _match_table, _tokens,
+from .question import (AMBIGUOUS_CURRENCY_WORDS, CURRENCY_WORDS, GRAMMAR, QuerySpec, _is_measure, _match_table, _tokens,
                        _value_columns, _value_words, blocked, ground, parse_question, singular, unexplained_terms,
                        vocabulary)
 from .traps import DERIVED_TABLE_RE
@@ -83,6 +83,13 @@ def _candidates(q: str, spec: QuerySpec, a: Assessment, cat: Catalog) -> list[tu
                 for t in rate_targets(cat)]
         if spec.table:
             out.append((_append(q, f"by {singular(spec.table)} currency"), "one figure per currency, nothing converted"))
+
+    if m := re.search(r"no exchange rates to ([A-Z]{3})", reasons):  # 'in INR' with no INR rate: offer what exists
+        code = m.group(1)
+        named = next((w for w in re.findall(r"[A-Za-z]+", q) if w.upper() == code or CURRENCY_WORDS.get(w.lower()) == code), None)
+        for t in rate_targets(cat):
+            out.append((_replace(q, named, t) if named else _append(q, f"in {t}"),
+                        f"in {t} instead: the data has no exchange rate to {code}"))
 
     for w in toks:  # 'dollars', 'pounds': offer only the currencies that name can mean
         if w in AMBIGUOUS_CURRENCY_WORDS:

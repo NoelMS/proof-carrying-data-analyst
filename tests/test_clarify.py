@@ -17,6 +17,8 @@ def run(catalog, q):
     ("Is revenue higher in 2024 than 2023?", "What was the revenue growth from 2023 to 2024 in USD?"),
     ("How much did customer 001 spend?", "How much did customer C001 spend in USD?"),
     ("What is the total revenue in USD excluding refunds?", "What is the total revenue in USD?"),
+    ("Which region generated the highest income in INR", "Which region generated the highest income in USD"),
+    ("What is the total revenue in yen?", "What is the total revenue in USD?"),  # no rate to JPY: offer USD
 ])
 def test_vague_question_is_refused_with_answerable_rewrites(catalog, q, expected):
     f = run(catalog, q)
