@@ -1,2 +1,5 @@
 *.cmd text eol=crlf
 *.sh text eol=lf
+*.pdf binary
+*.xlsx binary
+*.gguf binary
