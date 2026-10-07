@@ -74,7 +74,7 @@ async function renderBench(host, s) {
   if (!host.isConnected) return;
   if (prog?.running) return watchBench(host, s);
 
-  const btn = s.benchmark_available && h("button", { class: "btn btn--primary", type: "button" }, "Run benchmark ", arrow());
+  const btn = s.benchmark_available ? h("button", { class: "btn btn--primary", type: "button" }, "Run benchmark ", arrow()) : null;
   btn?.addEventListener("click", async () => {
     btn.disabled = true;
     try {
