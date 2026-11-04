@@ -1,8 +1,21 @@
 # Proof-Carrying Data Analyst
 
+[![Hackathon Winner](https://img.shields.io/badge/Hackathon-Winner%20%26%20HackNex%20National%20Qualifier-10b981.svg)](README.md)
+[![Python 3.11+](https://img.shields.io/badge/Python-3.11+-3776AB.svg?logo=python&logoColor=white)](https://python.org)
+[![DuckDB](https://img.shields.io/badge/Verification-DuckDB%20SQL-FFF000.svg?logo=duckdb&logoColor=black)](https://duckdb.org)
+
 Answers analytical questions over messy, multi-table data, and attaches executable proof to every number it reports.
 
-> No numerical answer without executable proof.
+> Selected as the winning project at the regional hackathon, qualifying for the national-level **HackNex** finals.
+
+> **"No numerical answer without executable proof."**
+
+<div align="center">
+  <a href="docs/brag.mp4">
+    <img src="docs/brag.jpg" alt="Proof-Carrying Data Analyst Video Preview" width="850" />
+  </a>
+  <p><em>Click preview image to watch the product overview video (docs/brag.mp4)</em></p>
+</div>
 
 Every accepted result comes from analysis code that has:
 1. run in an isolated sandbox,

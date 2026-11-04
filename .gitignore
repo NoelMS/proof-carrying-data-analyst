@@ -10,3 +10,6 @@ benchmark_results.json
 training/*.jsonl
 training/schemas.json
 *.gguf
+.agent/
+agent_handoff.md
+*.log
