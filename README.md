@@ -10,12 +10,11 @@ Answers analytical questions over messy, multi-table data, and attaches executab
 
 > **"No numerical answer without executable proof."**
 
-<div align="center">
-  <a href="docs/brag.mp4">
-    <img src="docs/brag.jpg" alt="Proof-Carrying Data Analyst Video Preview" width="850" />
-  </a>
-  <p><em>Click preview image to watch the product overview video (docs/brag.mp4)</em></p>
-</div>
+https://github.com/user-attachments/assets/demo (Video preview: see `docs/brag.mp4`)
+
+![Proof-Carrying Data Analyst Dual-Execution and Verification Engine Walkthrough](docs/img/demo.gif)
+
+*Live verification pipeline: reproducible Python sandbox execution, independent DuckDB SQL cross-verification, and deterministic proof generation.*
 
 Every accepted result comes from analysis code that has:
 1. run in an isolated sandbox,
